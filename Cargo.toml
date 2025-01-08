@@ -1,5 +1,8 @@
 [package]
 name = "cargo-semantic-release"
+description = "Plugin for Cargo to create semantic release"
+license = "MIT"
+license-file = "LICENSE"
 version = "0.1.0"
 edition = "2021"
 
