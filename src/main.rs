@@ -16,10 +16,6 @@ fn main() {
 
     println!("Commits in the directory:");
     for commit in commits {
-        println!(
-            "\t{} - {}",
-            commit.id(),
-            commit.message().unwrap().trim_end()
-        );
+        println!("\t{}", commit.message().trim_end());
     }
 }

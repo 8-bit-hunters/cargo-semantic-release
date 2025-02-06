@@ -1,19 +1,44 @@
 use git2::{Commit, Repository};
 use std::error::Error;
-pub fn get_commits(repository: &Repository) -> Result<Vec<Commit>, Box<dyn Error>> {
+
+pub fn get_commits(repository: &Repository) -> Result<Vec<conventional::Commit>, Box<dyn Error>> {
     let mut revwalk = repository.revwalk()?;
     revwalk.push_head()?;
 
-    Ok(revwalk
+    let commits_in_repo: Vec<Commit> = revwalk
         .filter_map(|object_id| object_id.ok())
         .filter_map(|valid_object_id| repository.find_commit(valid_object_id).ok())
+        .collect();
+
+    Ok(commits_in_repo
+        .into_iter()
+        .map(|commit| conventional::Commit::from_git2_commit(commit))
         .collect())
 }
 
+pub mod conventional {
+
+    #[derive(Clone, Debug)]
+    pub struct Commit {
+        message: String,
+    }
+
+    impl Commit {
+        pub fn from_git2_commit(commit: git2::Commit) -> Self {
+            Self {
+                message: commit.message().unwrap().to_string(),
+            }
+        }
+
+        pub fn message(&self) -> &str {
+            &self.message
+        }
+    }
+}
 #[cfg(test)]
 mod library_test {
-    use crate::get_commits;
-    use git2::{Commit, Repository, RepositoryInitOptions};
+    use crate::{conventional, get_commits};
+    use git2::{Repository, RepositoryInitOptions};
     use std::collections::HashSet;
     use tempfile::TempDir;
 
@@ -56,10 +81,13 @@ mod library_test {
         repository
     }
 
-    fn compare_commits(commits: &Vec<Commit>, committed_messages: &Vec<&str>) -> bool {
+    fn compare(
+        result_of_get_commits: &Vec<conventional::Commit>,
+        expected_commits: &Vec<&str>,
+    ) -> bool {
         let collected_commit_messages: HashSet<_> =
-            commits.iter().filter_map(|c| c.message()).collect();
-        let committed_messages: HashSet<_> = committed_messages.iter().copied().collect();
+            result_of_get_commits.iter().map(|c| c.message()).collect();
+        let committed_messages: HashSet<_> = expected_commits.iter().copied().collect();
         collected_commit_messages == committed_messages
     }
 
@@ -73,7 +101,7 @@ mod library_test {
         // Then
         let expected_commit_messages = vec!["initial_commit"];
         assert!(
-            compare_commits(&result, &expected_commit_messages),
+            compare(&result, &expected_commit_messages),
             "result = {:?}\nexpected result = {:?}",
             result,
             expected_commit_messages
@@ -92,7 +120,7 @@ mod library_test {
         let result = get_commits(&repository).unwrap();
         // Then
         assert!(
-            compare_commits(&result, &commit_messages),
+            compare(&result, &commit_messages),
             "result = {:?}\ncommit_messages = {:?}",
             result,
             commit_messages
