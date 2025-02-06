@@ -1,6 +1,28 @@
 use git2::{Commit, Repository};
 use std::error::Error;
 
+/// # Description
+/// Get the commit messages from a given git repository.
+/// ## Returns
+/// A vector containing the commits or an error type when an error occurs.
+/// ## Examples
+/// ```
+///  use std::env;
+///  use git2::Repository;
+///  use cargo_semantic_release::get_commits;
+///
+///  let git_repo = Repository::open(".").unwrap();
+///
+///  let commits = get_commits(&git_repo).unwrap_or_else(|error| {
+///     eprintln!("{}", error);
+///     Vec::new()
+///  });
+///
+///  println!("Commits in the directory:");
+///  for commit in commits {
+///     println!("\t{}", commit.message().trim_end());
+///  }
+/// ```
 pub fn get_commits(repository: &Repository) -> Result<Vec<conventional::Commit>, Box<dyn Error>> {
     let mut revwalk = repository.revwalk()?;
     revwalk.push_head()?;
@@ -17,19 +39,40 @@ pub fn get_commits(repository: &Repository) -> Result<Vec<conventional::Commit>,
 }
 
 pub mod conventional {
-
+    /// A structure to represent a git commit.
+    ///
+    /// Can be created with [`from_git2_commit`] method
+    ///
+    /// [`from_git2_commit`]: Commit::from_git2_commit
+    /// ## Example
+    /// ```
+    ///  use git2::Repository;
+    ///  use cargo_semantic_release::conventional;
+    ///
+    ///  let repo = Repository::open(".").unwrap();
+    ///  let commit_oid = repo.head().unwrap().target().unwrap();
+    ///  let git2_commit = repo.find_commit(commit_oid).unwrap();
+    ///
+    ///  let commit = conventional::Commit::from_git2_commit(git2_commit);
+    ///
+    /// ```
     #[derive(Clone, Debug)]
     pub struct Commit {
         message: String,
     }
 
     impl Commit {
+        /// Create [`Commit`] from [`git2::Commit`] object.
+        ///
+        /// [`Commit`]: Commit
+        /// ['git2::Commit`]: git2::Commit
         pub fn from_git2_commit(commit: git2::Commit) -> Self {
             Self {
                 message: commit.message().unwrap().to_string(),
             }
         }
 
+        /// Return a reference to the `message` attribute
         pub fn message(&self) -> &str {
             &self.message
         }
@@ -42,6 +85,11 @@ mod library_test {
     use std::collections::HashSet;
     use tempfile::TempDir;
 
+    #[doc(hidden)]
+    /// # Description
+    /// Create an empty git repository in a temporary directory.
+    /// # Returns
+    /// The handler for the temporary directory and for the git repository.
     fn repo_init() -> (TempDir, Repository) {
         let temp_dir = TempDir::new().unwrap();
         let mut opts = RepositoryInitOptions::new();
@@ -53,6 +101,11 @@ mod library_test {
         (temp_dir, repo)
     }
 
+    #[doc(hidden)]
+    /// # Description
+    /// Add commit to a given repository.
+    /// ## Returns
+    /// The modified repository.
     fn add_commit(repository: Repository, commit_messages: String) -> Repository {
         {
             let id = repository.index().unwrap().write_tree().unwrap();
@@ -81,6 +134,11 @@ mod library_test {
         repository
     }
 
+    #[doc(hidden)]
+    /// # Description
+    /// Compare the result of `get_commits` function with the expected commit messages.
+    /// ## Returns
+    /// `true` if the result and expected commit messages are the same, `false` otherwise.
     fn compare(
         result_of_get_commits: &Vec<conventional::Commit>,
         expected_commits: &Vec<&str>,
