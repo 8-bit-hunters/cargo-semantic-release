@@ -150,7 +150,7 @@ mod library_test {
     }
 
     #[test]
-    fn test_getting_commits_from_repo_with_one_commit() {
+    fn getting_commits_from_repo_with_one_commit() {
         // Given
         let (_temp_dir, repository) = repo_init();
         let repository = add_commit(repository, "initial_commit".to_string());
@@ -167,7 +167,7 @@ mod library_test {
     }
 
     #[test]
-    fn test_getting_commits_from_repo_with_multiple_commits() {
+    fn getting_commits_from_repo_with_multiple_commits() {
         // Given
         let (_temp_dir, mut repository) = repo_init();
         let commit_messages = vec!["commit 1", "commit 2", "commit 3"];
@@ -186,7 +186,7 @@ mod library_test {
     }
 
     #[test]
-    fn test_getting_commits_from_empty_repo() {
+    fn getting_commits_from_empty_repo() {
         // Given
         let (_temp_dir, repository) = repo_init();
         // When
