@@ -1,5 +1,5 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::get_commits;
+use cargo_semantic_release::{get_commits, Changes};
 use git2::Repository;
 use std::{env, process};
 
@@ -14,8 +14,6 @@ fn main() {
         process::exit(1);
     });
 
-    println!("Commits in the directory:");
-    for commit in commits {
-        println!("\t{}", commit.message().trim_end());
-    }
+    let changes = Changes::sort_commits(commits);
+    println!("Changes in the repository:\n{}", changes);
 }

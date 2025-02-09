@@ -1,5 +1,6 @@
 use git2::{Commit, Repository};
 use std::error::Error;
+use std::fmt::Display;
 
 /// # Description
 /// Get the commit messages from a given git repository.
@@ -23,7 +24,7 @@ use std::error::Error;
 ///     println!("\t{}", commit.message().trim_end());
 ///  }
 /// ```
-pub fn get_commits(repository: &Repository) -> Result<Vec<conventional::Commit>, Box<dyn Error>> {
+pub fn get_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
     let mut revwalk = repository.revwalk()?;
     revwalk.push_head()?;
 
@@ -34,53 +35,192 @@ pub fn get_commits(repository: &Repository) -> Result<Vec<conventional::Commit>,
 
     Ok(commits_in_repo
         .into_iter()
-        .map(|commit| conventional::Commit::from_git2_commit(commit))
+        .map(|commit| ConventionalCommit::from_git2_commit(commit))
         .collect())
 }
 
-pub mod conventional {
-    /// A structure to represent a git commit.
+/// A structure to represent a git commit.
+///
+/// Can be created with [`from_git2_commit`] method
+///
+/// [`from_git2_commit`]: ConventionalCommit::from_git2_commit
+/// ## Example
+/// ```
+///  use git2::Repository;
+///  use cargo_semantic_release::{ConventionalCommit};
+///
+///  let repo = Repository::open(".").unwrap();
+///  let commit_oid = repo.head().unwrap().target().unwrap();
+///  let git2_commit = repo.find_commit(commit_oid).unwrap();
+///
+///  let commit = ConventionalCommit::from_git2_commit(git2_commit);
+///
+/// ```
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConventionalCommit {
+    message: String,
+}
+
+impl ConventionalCommit {
+    /// Create [`Commit`] from [`git2::Commit`] object.
     ///
-    /// Can be created with [`from_git2_commit`] method
-    ///
-    /// [`from_git2_commit`]: Commit::from_git2_commit
-    /// ## Example
-    /// ```
-    ///  use git2::Repository;
-    ///  use cargo_semantic_release::conventional;
-    ///
-    ///  let repo = Repository::open(".").unwrap();
-    ///  let commit_oid = repo.head().unwrap().target().unwrap();
-    ///  let git2_commit = repo.find_commit(commit_oid).unwrap();
-    ///
-    ///  let commit = conventional::Commit::from_git2_commit(git2_commit);
-    ///
-    /// ```
-    #[derive(Clone, Debug)]
-    pub struct Commit {
-        message: String,
+    /// [`Commit`]: ConventionalCommit
+    /// ['git2::Commit`]: git2::Commit
+    pub fn from_git2_commit(commit: git2::Commit) -> Self {
+        // TODO(kk): return error type when the git2 commit message is not conventional
+        Self {
+            message: commit.message().unwrap().to_string(),
+        }
     }
 
-    impl Commit {
-        /// Create [`Commit`] from [`git2::Commit`] object.
-        ///
-        /// [`Commit`]: Commit
-        /// ['git2::Commit`]: git2::Commit
-        pub fn from_git2_commit(commit: git2::Commit) -> Self {
-            Self {
-                message: commit.message().unwrap().to_string(),
-            }
-        }
+    /// Return a reference to the `message` attribute
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
 
-        /// Return a reference to the `message` attribute
-        pub fn message(&self) -> &str {
-            &self.message
+impl Display for ConventionalCommit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub struct Changes {
+    major: Vec<ConventionalCommit>,
+    minor: Vec<ConventionalCommit>,
+    patch: Vec<ConventionalCommit>,
+    other: Vec<ConventionalCommit>,
+}
+
+impl Changes {
+    pub fn sort_commits(unsorted_commits: Vec<ConventionalCommit>) -> Self {
+        let major_tags = [":boom:"];
+        let minor_tags = [
+            ":sparkles:",
+            ":children_crossing:",
+            ":lipstick:",
+            ":iphone:",
+            ":egg:",
+            ":chart_with_upwards_trend:",
+            ":heavy_plus_sign:",
+            ":heavy_minus_sign:",
+            ":passport_control:",
+        ];
+        let patch_tags = [
+            ":art:",
+            ":ambulance:",
+            ":lock:",
+            ":bug:",
+            ":zap:",
+            ":goal_net:",
+            ":alien:",
+            ":wheelchair:",
+            ":speech_balloon:",
+            ":mag:",
+            ":fire:",
+            ":white_check_mark:",
+            ":closed_lock_with_key:",
+            ":rotating_light:",
+            ":green_heart:",
+            ":arrow_down:",
+            ":arrow_up:",
+            ":pushpin:",
+            ":construction_worker:",
+            ":recycle:",
+            ":wrench:",
+            ":hammer:",
+            ":globe_with_meridians:",
+            ":package:",
+            ":truck:",
+            ":bento:",
+            ":card_file_box:",
+            ":loud_sound:",
+            ":mute:",
+            ":building_construction:",
+            ":camera_flash:",
+            ":label:",
+            ":seedling:",
+            ":triangular_flag_on_post:",
+            ":dizzy:",
+            ":adhesive_bandage:",
+            ":monocle_face:",
+            ":necktie:",
+            ":stethoscope:",
+            ":technologist:",
+            ":thread:",
+            ":safety_vest:",
+        ];
+        let other_tags = [
+            ":memo:",
+            ":rocket:",
+            ":tada:",
+            ":bookmark:",
+            ":construction:",
+            ":pencil2:",
+            ":poop:",
+            ":rewind:",
+            ":twisted_rightwards_arrows:",
+            ":page_facing_up:",
+            ":bulb:",
+            ":beers:",
+            ":bust_in_silhouette:",
+            ":clown_face:",
+            ":see_no_evil:",
+            ":alembic:",
+            ":wastebasket:",
+            ":coffin:",
+            ":test_tube:",
+            ":bricks:",
+            ":money_with_wings:",
+        ];
+
+        Self {
+            major: get_commits_with_tag(unsorted_commits.clone(), major_tags.to_vec()),
+            minor: get_commits_with_tag(unsorted_commits.clone(), minor_tags.to_vec()),
+            patch: get_commits_with_tag(unsorted_commits.clone(), patch_tags.to_vec()),
+            other: get_commits_with_tag(unsorted_commits, other_tags.to_vec()),
         }
     }
 }
+
+impl Display for Changes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let major_changes = convert_to_string_vector(self.major.clone());
+        let minor_changes = convert_to_string_vector(self.minor.clone());
+        let patch_changes = convert_to_string_vector(self.patch.clone());
+        let other_changes = convert_to_string_vector(self.other.clone());
+        write!(
+            f,
+            "major:\n\t{}\nminor:\n\t{}\npatch:\n\t{}\nother:\n\t{}",
+            major_changes.join("\t"),
+            minor_changes.join("\t"),
+            patch_changes.join("\t"),
+            other_changes.join("\t")
+        )
+    }
+}
+
+fn convert_to_string_vector(commits: Vec<ConventionalCommit>) -> Vec<String> {
+    commits
+        .into_iter()
+        .map(|commit| commit.message().to_string())
+        .collect::<Vec<String>>()
+}
+
+fn get_commits_with_tag(
+    commits: Vec<ConventionalCommit>,
+    tags: Vec<&str>,
+) -> Vec<ConventionalCommit> {
+    commits
+        .into_iter()
+        .filter(|commit| tags.iter().any(|tag| commit.message.contains(tag)))
+        .collect()
+}
+
 #[cfg(test)]
-mod library_test {
-    use crate::{conventional, get_commits};
+mod get_commits_functionality {
+    use crate::{get_commits, ConventionalCommit};
     use git2::{Repository, RepositoryInitOptions};
     use std::collections::HashSet;
     use tempfile::TempDir;
@@ -140,7 +280,7 @@ mod library_test {
     /// ## Returns
     /// `true` if the result and expected commit messages are the same, `false` otherwise.
     fn compare(
-        result_of_get_commits: &Vec<conventional::Commit>,
+        result_of_get_commits: &Vec<ConventionalCommit>,
         expected_commits: &Vec<&str>,
     ) -> bool {
         let collected_commit_messages: HashSet<_> =
@@ -193,5 +333,325 @@ mod library_test {
         let result = get_commits(&repository);
         // Then
         assert!(result.is_err(), "Expected and error, but got Ok")
+    }
+}
+
+#[cfg(test)]
+mod changes_struct {
+    use crate::Changes;
+    use crate::ConventionalCommit;
+
+    #[test]
+    fn creating_from_empty_commit_list() {
+        // Given
+        let commits = Vec::<ConventionalCommit>::new();
+
+        // When
+        let result = Changes::sort_commits(commits);
+
+        // Then
+        let expected_result = Changes {
+            major: Vec::new(),
+            minor: Vec::new(),
+            patch: Vec::new(),
+            other: Vec::new(),
+        };
+        assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn creating_from_only_major_conventional_commits() {
+        // Given
+        let commits = vec![ConventionalCommit {
+            message: ":boom: introduce breaking changes".to_string(),
+        }];
+
+        // When
+        let result = Changes::sort_commits(commits.clone());
+
+        // Then
+        let expected_result = Changes {
+            major: commits,
+            minor: Vec::new(),
+            patch: Vec::new(),
+            other: Vec::new(),
+        };
+        assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn creating_from_only_minor_conventional_commits() {
+        // Given
+        let commits = vec![
+            ConventionalCommit {
+                message: ":sparkles: introduce new feature".to_string(),
+            },
+            ConventionalCommit {
+                message: ":children_crossing: improve user experience / usability".to_string(),
+            },
+            ConventionalCommit {
+                message: ":lipstick: add or update the UI and style files".to_string(),
+            },
+            ConventionalCommit {
+                message: ":iphone: work on responsive design".to_string(),
+            },
+            ConventionalCommit {
+                message: ":egg: add or update an easter egg".to_string(),
+            },
+            ConventionalCommit {
+                message: ":chart_with_upwards_trend: add or update analytics or track code"
+                    .to_string(),
+            },
+            ConventionalCommit {
+                message: ":heavy_plus_sign: add a dependency".to_string(),
+            },
+            ConventionalCommit {
+                message: ":heavy_minus_sign: remove a dependency".to_string(),
+            },
+            ConventionalCommit {
+                message: ":passport_control: work on code related to authorization, roles and permissions".to_string(),
+            },
+        ];
+
+        // When
+        let result = Changes::sort_commits(commits.clone());
+
+        // Then
+        let expected_result = Changes {
+            major: Vec::new(),
+            minor: commits,
+            patch: Vec::new(),
+            other: Vec::new(),
+        };
+        assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn creating_from_only_patch_conventional_commits() {
+        // Given
+        let commits = vec![
+            ConventionalCommit {
+                message: ":art: improve structure / format of the code".to_string(),
+            },
+            ConventionalCommit {
+                message: ":ambulance: critical hotfix".to_string(),
+            },
+            ConventionalCommit {
+                message: ":lock: fix security or privacy issues".to_string(),
+            },
+            ConventionalCommit {
+                message: ":bug: fix a bug".to_string(),
+            },
+            ConventionalCommit {
+                message: ":zap: improve performance".to_string(),
+            },
+            ConventionalCommit {
+                message: ":goal_net: catch errors".to_string(),
+            },
+            ConventionalCommit {
+                message: ":alien: update code due to external API changes".to_string(),
+            },
+            ConventionalCommit {
+                message: ":wheelchair: improve accessibility".to_string(),
+            },
+            ConventionalCommit {
+                message: ":speech_balloon: add or update text and literals".to_string(),
+            },
+            ConventionalCommit {
+                message: ":mag: improve SEO".to_string(),
+            },
+            ConventionalCommit {
+                message: ":fire: remove code or files".to_string(),
+            },
+            ConventionalCommit {
+                message: ":white_check_mark: add, update, or pass tests".to_string(),
+            },
+            ConventionalCommit {
+                message: ":closed_lock_with_key: add or update secrets".to_string(),
+            },
+            ConventionalCommit {
+                message: ":rotating_light: fix compiler / linter warnings".to_string(),
+            },
+            ConventionalCommit {
+                message: ":green_heart: fix CI build".to_string(),
+            },
+            ConventionalCommit {
+                message: ":arrow_down: downgrade dependencies".to_string(),
+            },
+            ConventionalCommit {
+                message: ":arrow_up: upgrade dependencies".to_string(),
+            },
+            ConventionalCommit {
+                message: ":pushpin: pin dependencies to specific versions".to_string(),
+            },
+            ConventionalCommit {
+                message: ":construction_worker: add or update CI build system".to_string(),
+            },
+            ConventionalCommit {
+                message: ":recycle: refactor code".to_string(),
+            },
+            ConventionalCommit {
+                message: ":wrench: add or update configuration files".to_string(),
+            },
+            ConventionalCommit {
+                message: ":hammer: add or update development scripts".to_string(),
+            },
+            ConventionalCommit {
+                message: ":globe_with_meridians: internationalization and localization".to_string(),
+            },
+            ConventionalCommit {
+                message: ":package: add or update compiled files or packages".to_string(),
+            },
+            ConventionalCommit {
+                message: ":truck: move or rename resources (e.g.: files, paths, routes".to_string(),
+            },
+            ConventionalCommit {
+                message: ":bento: add or update assets".to_string(),
+            },
+            ConventionalCommit {
+                message: ":card_file_box: perform database related changes".to_string(),
+            },
+            ConventionalCommit {
+                message: ":loud_sound: add or update logs".to_string(),
+            },
+            ConventionalCommit {
+                message: ":mute: remove logs".to_string(),
+            },
+            ConventionalCommit {
+                message: ":building_construction: make architectural changes".to_string(),
+            },
+            ConventionalCommit {
+                message: ":camera_flash: add or update snapshots".to_string(),
+            },
+            ConventionalCommit {
+                message: ":label: add or update types".to_string(),
+            },
+            ConventionalCommit {
+                message: ":seedling: add or update seed files".to_string(),
+            },
+            ConventionalCommit {
+                message: ":triangular_flag_on_post: add, update, or remove feature flags"
+                    .to_string(),
+            },
+            ConventionalCommit {
+                message: ":dizzy: add or update animations an transitions".to_string(),
+            },
+            ConventionalCommit {
+                message: ":adhesive_bandage: simple fix for a non critical issue".to_string(),
+            },
+            ConventionalCommit {
+                message: ":monocle_face: data exploration / inspection".to_string(),
+            },
+            ConventionalCommit {
+                message: ":necktie: add or update business logic".to_string(),
+            },
+            ConventionalCommit {
+                message: ":stethoscope: add or update healthcheck".to_string(),
+            },
+            ConventionalCommit {
+                message: ":technologist: improve developer experience".to_string(),
+            },
+            ConventionalCommit {
+                message: ":thread: add or update code related to multithreading or concurrency"
+                    .to_string(),
+            },
+            ConventionalCommit {
+                message: ":safety_vest: add or update code related to validation".to_string(),
+            },
+        ];
+
+        // When
+        let result = Changes::sort_commits(commits.clone());
+
+        // Then
+        let expected_result = Changes {
+            major: Vec::new(),
+            minor: Vec::new(),
+            patch: commits,
+            other: Vec::new(),
+        };
+        assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn creating_from_only_other_conventional_commits() {
+        let commits = vec![
+            ConventionalCommit {
+                message: ":memo: add or update documentation".to_string(),
+            },
+            ConventionalCommit {
+                message: ":rocket: deploy stuff".to_string(),
+            },
+            ConventionalCommit {
+                message: ":tada: begin a project".to_string(),
+            },
+            ConventionalCommit {
+                message: ":bookmark: release / version tags".to_string(),
+            },
+            ConventionalCommit {
+                message: ":construction: work in progress".to_string(),
+            },
+            ConventionalCommit {
+                message: ":pencil2: fix typos".to_string(),
+            },
+            ConventionalCommit {
+                message: ":poop: write bad code that needs to be improved".to_string(),
+            },
+            ConventionalCommit {
+                message: ":rewind: revert changes".to_string(),
+            },
+            ConventionalCommit {
+                message: ":twisted_rightwards_arrows: merge branches".to_string(),
+            },
+            ConventionalCommit {
+                message: ":page_facing_up: add or update license".to_string(),
+            },
+            ConventionalCommit {
+                message: ":bulb: add or update comments in source code".to_string(),
+            },
+            ConventionalCommit {
+                message: ":beers: write code drunkenly".to_string(),
+            },
+            ConventionalCommit {
+                message: ":bust_in_silhouette: add or update contributor(s)".to_string(),
+            },
+            ConventionalCommit {
+                message: ":clown_face: mock things".to_string(),
+            },
+            ConventionalCommit {
+                message: ":see_no_evil: add or update a .gitignore file".to_string(),
+            },
+            ConventionalCommit {
+                message: ":alembic: perform experiments".to_string(),
+            },
+            ConventionalCommit {
+                message: ":wastebasket: deprecate code that needs to be cleaned up".to_string(),
+            },
+            ConventionalCommit {
+                message: ":coffin: remove dead code".to_string(),
+            },
+            ConventionalCommit {
+                message: ":test_tube: add a failing test".to_string(),
+            },
+            ConventionalCommit {
+                message: ":bricks: infrastructure related changes".to_string(),
+            },
+            ConventionalCommit {
+                message: ":money_with_wings: add sponsorship or money related infrastructure"
+                    .to_string(),
+            },
+        ];
+
+        // When
+        let result = Changes::sort_commits(commits.clone());
+
+        // Then
+        let expected_result = Changes {
+            major: Vec::new(),
+            minor: Vec::new(),
+            patch: Vec::new(),
+            other: commits,
+        };
+        assert_eq!(result, expected_result);
     }
 }
