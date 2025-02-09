@@ -1,5 +1,5 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::{get_commits, Changes};
+use cargo_semantic_release::{evaluate_changes, get_commits, Changes};
 use git2::Repository;
 use std::{env, process};
 
@@ -16,4 +16,7 @@ fn main() {
 
     let changes = Changes::sort_commits(commits);
     println!("Changes in the repository:\n{}", changes);
+
+    let action = evaluate_changes(changes);
+    println!("Action for semantic version:\n{}", action);
 }

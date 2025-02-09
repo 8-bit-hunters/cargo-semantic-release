@@ -218,6 +218,39 @@ fn get_commits_with_tag(
         .collect()
 }
 
+#[derive(PartialEq, Debug)]
+pub enum SemanticVersion {
+    IncrementMajor,
+    IncrementMinor,
+    IncrementPatch,
+    Keep,
+}
+
+impl Display for SemanticVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg = match self {
+            SemanticVersion::IncrementMajor => "increment major version",
+            SemanticVersion::IncrementMinor => "increment minor version",
+            SemanticVersion::IncrementPatch => "increment patch version",
+            SemanticVersion::Keep => "keep version",
+        };
+        write!(f, "{}", msg)
+    }
+}
+
+pub fn evaluate_changes(changes: Changes) -> SemanticVersion {
+    if !changes.major.is_empty() {
+        return SemanticVersion::IncrementMajor;
+    }
+    if !changes.minor.is_empty() {
+        return SemanticVersion::IncrementMinor;
+    }
+    if !changes.patch.is_empty() {
+        return SemanticVersion::IncrementPatch;
+    }
+    SemanticVersion::Keep
+}
+
 #[cfg(test)]
 mod get_commits_functionality {
     use crate::{get_commits, ConventionalCommit};
@@ -653,5 +686,98 @@ mod changes_struct {
             other: commits,
         };
         assert_eq!(result, expected_result);
+    }
+}
+
+#[cfg(test)]
+mod evaluate_changes {
+    use crate::{evaluate_changes, Changes, ConventionalCommit, SemanticVersion};
+
+    #[test]
+    fn has_no_changes() {
+        // Given
+        let changes = Changes {
+            major: Vec::new(),
+            minor: Vec::new(),
+            patch: Vec::new(),
+            other: vec![ConventionalCommit {
+                message: "other commit".to_string(),
+            }],
+        };
+
+        // When
+        let result = evaluate_changes(changes);
+
+        // Then
+        assert_eq!(result, SemanticVersion::Keep);
+    }
+
+    #[test]
+    fn has_patch_changes() {
+        // Given
+        let changes = Changes {
+            major: Vec::new(),
+            minor: Vec::new(),
+            patch: vec![ConventionalCommit {
+                message: "patch commit".to_string(),
+            }],
+            other: vec![ConventionalCommit {
+                message: "other commit".to_string(),
+            }],
+        };
+
+        // When
+        let result = evaluate_changes(changes);
+
+        // Then
+        assert_eq!(result, SemanticVersion::IncrementPatch);
+    }
+
+    #[test]
+    fn has_minor_changes() {
+        // Given
+        let changes = Changes {
+            major: Vec::new(),
+            minor: vec![ConventionalCommit {
+                message: "minor commit".to_string(),
+            }],
+            patch: vec![ConventionalCommit {
+                message: "patch commit".to_string(),
+            }],
+            other: vec![ConventionalCommit {
+                message: "other commit".to_string(),
+            }],
+        };
+
+        // When
+        let result = evaluate_changes(changes);
+
+        // Then
+        assert_eq!(result, SemanticVersion::IncrementMinor);
+    }
+
+    #[test]
+    fn has_major_changes() {
+        // Given
+        let changes = Changes {
+            major: vec![ConventionalCommit {
+                message: "major commit".to_string(),
+            }],
+            minor: vec![ConventionalCommit {
+                message: "minor commit".to_string(),
+            }],
+            patch: vec![ConventionalCommit {
+                message: "patch commit".to_string(),
+            }],
+            other: vec![ConventionalCommit {
+                message: "other commit".to_string(),
+            }],
+        };
+
+        // When
+        let result = evaluate_changes(changes);
+
+        // Then
+        assert_eq!(result, SemanticVersion::IncrementMajor);
     }
 }
