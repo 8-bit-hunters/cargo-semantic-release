@@ -11,6 +11,9 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-spellcheck
       - uses: actions/setup-python@v4
         with:
           python-version: 3.x

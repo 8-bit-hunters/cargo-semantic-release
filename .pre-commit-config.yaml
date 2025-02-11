@@ -11,4 +11,12 @@ repos:
       - id: fmt
       - id: cargo-check
       - id: clippy
-        entry: cargo clippy --all-features
+  - repo: local
+    hooks:
+      - id: cargo-spellcheck
+        name: cargo-spellcheck
+        description: Spellcheck rust files
+        entry: cargo-spellcheck
+        language: rust
+        types: [ rust ]
+        args: [ "--code=99", "--" ]
