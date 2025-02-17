@@ -16,7 +16,10 @@ This project aims to create a Cargo plugin that creates semantic releases for Ru
 
 ## Installation
 
+{{< callout type="warning" >}}
 If you don't have, install the Rust toolchain.
+{{< /callout >}}
+
 
 Install the tool with `Cargo` with the following command.
 
