@@ -5,6 +5,8 @@ description = "Plugin for Cargo to create semantic release"
 edition = "2021"
 authors = ["Kristof Kovacs <kristof.kovacs1996@gmail.com>"]
 license-file = "LICENSE"
+documentation = "https://docs.rs/crate/cargo-semantic-release/"
+homepage = "https://8-bit-hunters.github.io/cargo-semantic-release/"
 
 [dependencies]
 git2 = "0.20.0"
