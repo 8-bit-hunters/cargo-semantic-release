@@ -18,5 +18,5 @@ fn main() {
     println!("Changes in the repository:\n{}", changes);
 
     let action = evaluate_changes(changes);
-    println!("Action for semantic version:\n{}", action);
+    println!("Action for semantic version ➡️ {}", action);
 }
