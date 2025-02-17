@@ -1,9 +1,10 @@
 [package]
 name = "cargo-semantic-release"
-description = "Plugin for Cargo to create semantic release"
-license-file = "LICENSE"
 version = "0.1.0"
+description = "Plugin for Cargo to create semantic release"
 edition = "2021"
+authors = ["Kristof Kovacs <kristof.kovacs1996@gmail.com>"]
+license-file = "LICENSE"
 
 [dependencies]
 git2 = "0.20.0"
