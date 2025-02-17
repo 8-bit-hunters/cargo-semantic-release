@@ -2,7 +2,6 @@ use git2::{Commit, Repository};
 use std::error::Error;
 use std::fmt::Display;
 
-/// # Description
 /// Get the commit messages from a given git repository.
 /// ## Returns
 /// A vector containing the commits or an error type when an error occurs.
@@ -85,15 +84,37 @@ impl Display for ConventionalCommit {
     }
 }
 
+/// Structure that represents the changes in a git repository
 #[derive(PartialEq, Debug)]
 pub struct Changes {
+    /// Vector of commits with major changes
     major: Vec<ConventionalCommit>,
+    /// Vector of commits with minor changes
     minor: Vec<ConventionalCommit>,
+    /// Vector of commits with patch changes
     patch: Vec<ConventionalCommit>,
+    /// Vector of commits with other changes
     other: Vec<ConventionalCommit>,
 }
 
 impl Changes {
+    /// Sort the commits into `major`, `minor`, `patch` and `other` change categories
+    /// according to their commit flags.
+    ///
+    /// ## Returns
+    ///
+    /// The [`Changes`] structure with the sorted commits.
+    ///
+    /// ## Example
+    /// ```
+    /// use git2::Repository;
+    /// use cargo_semantic_release::{get_commits , Changes};
+    ///
+    /// let git_repo = Repository::open(".").unwrap();
+    /// let commits = get_commits(&git_repo).unwrap();
+    ///
+    /// let changes = Changes::sort_commits(commits);
+    /// ```
     pub fn sort_commits(unsorted_commits: Vec<ConventionalCommit>) -> Self {
         let major_tags = [":boom:"];
         let minor_tags = [
@@ -218,6 +239,7 @@ fn get_commits_with_tag(
         .collect()
 }
 
+/// Enum to represent the action for semantic version
 #[derive(PartialEq, Debug)]
 pub enum SemanticVersion {
     IncrementMajor,
@@ -238,6 +260,25 @@ impl Display for SemanticVersion {
     }
 }
 
+/// Evaluate the changes find in a repository to figure out the semantic version action
+///
+/// ## Returns
+///
+/// [`SemanticVersion`] enum for the suggested semantic version change.
+///
+/// ## Example
+///
+/// ```
+///  use git2::Repository;
+///  use cargo_semantic_release::{evaluate_changes, get_commits, Changes};
+///
+///  let git_repo = Repository::open(".").unwrap();
+///  let commits = get_commits(&git_repo).unwrap();
+///  let changes = Changes::sort_commits(commits);
+///
+///  let action = evaluate_changes(changes);
+///  println!("suggested change of semantic version: {}", action);
+/// ```
 pub fn evaluate_changes(changes: Changes) -> SemanticVersion {
     if !changes.major.is_empty() {
         return SemanticVersion::IncrementMajor;
@@ -259,7 +300,6 @@ mod get_commits_functionality {
     use tempfile::TempDir;
 
     #[doc(hidden)]
-    /// # Description
     /// Create an empty git repository in a temporary directory.
     /// # Returns
     /// The handler for the temporary directory and for the git repository.
@@ -275,7 +315,6 @@ mod get_commits_functionality {
     }
 
     #[doc(hidden)]
-    /// # Description
     /// Add commit to a given repository.
     /// ## Returns
     /// The modified repository.
@@ -308,7 +347,6 @@ mod get_commits_functionality {
     }
 
     #[doc(hidden)]
-    /// # Description
     /// Compare the result of `get_commits` function with the expected commit messages.
     /// ## Returns
     /// `true` if the result and expected commit messages are the same, `false` otherwise.
