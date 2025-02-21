@@ -1,7 +1,7 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::{get_commits, Changes};
+use cargo_semantic_release::Changes;
 use git2::Repository;
-use std::{env, process};
+use std::env;
 
 fn main() {
     let path = env::current_dir().expect("Failed to get current directory");
@@ -9,14 +9,9 @@ fn main() {
 
     let git_repo = Repository::open(path).expect("Failed to open git repo");
 
-    let commits = get_commits(&git_repo).unwrap_or_else(|error| {
-        eprintln!("Application error: {}", error);
-        process::exit(1);
-    });
-
-    let changes = Changes::sort_commits(commits);
-    println!("Changes in the repository:\n{}", changes);
+    let changes = Changes::from_repo(&git_repo);
+    println!("Changes in the repository:\n{changes}");
 
     let action = changes.define_action_for_semantic_version();
-    println!("Action for semantic version ➡️ {}", action);
+    println!("Action for semantic version ➡️ {action}");
 }
