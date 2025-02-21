@@ -20,7 +20,7 @@ jobs:
         id: get_version
         run: |
           VERSION_NUMBER=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION_NUMBER" >> $GITHUB_ENV
 
       - name: Build project
         uses: actions-rs/cargo@v1
@@ -44,3 +44,8 @@ jobs:
           files: artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --token $CARGO_REGISTRY_TOKEN
