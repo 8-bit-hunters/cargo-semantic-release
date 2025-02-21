@@ -246,7 +246,6 @@ impl ConventionalCommit {
     /// [`Commit`]: ConventionalCommit
     /// ['git2::Commit`]: git2::Commit
     pub fn from_git2_commit(commit: git2::Commit) -> Self {
-        // TODO(kk): return error type when the git2 commit message is not conventional
         Self {
             message: commit.message().unwrap().to_string(),
         }
