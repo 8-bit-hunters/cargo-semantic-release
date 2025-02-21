@@ -116,84 +116,84 @@ impl Changes {
     /// let changes = Changes::sort_commits(commits);
     /// ```
     pub fn sort_commits(unsorted_commits: Vec<ConventionalCommit>) -> Self {
-        let major_tags = [":boom:"];
+        let major_tags = [(":boom:", "💥")];
         let minor_tags = [
-            ":sparkles:",
-            ":children_crossing:",
-            ":lipstick:",
-            ":iphone:",
-            ":egg:",
-            ":chart_with_upwards_trend:",
-            ":heavy_plus_sign:",
-            ":heavy_minus_sign:",
-            ":passport_control:",
+            (":sparkles:", "✨"),
+            (":children_crossing:", "🚸"),
+            (":lipstick:", "💄"),
+            (":iphone:", "📱"),
+            (":egg:", "🥚"),
+            (":chart_with_upwards_trend:", "📈"),
+            (":heavy_plus_sign:", "➕"),
+            (":heavy_minus_sign:", "➖"),
+            (":passport_control:", "🛂"),
         ];
         let patch_tags = [
-            ":art:",
-            ":ambulance:",
-            ":lock:",
-            ":bug:",
-            ":zap:",
-            ":goal_net:",
-            ":alien:",
-            ":wheelchair:",
-            ":speech_balloon:",
-            ":mag:",
-            ":fire:",
-            ":white_check_mark:",
-            ":closed_lock_with_key:",
-            ":rotating_light:",
-            ":green_heart:",
-            ":arrow_down:",
-            ":arrow_up:",
-            ":pushpin:",
-            ":construction_worker:",
-            ":recycle:",
-            ":wrench:",
-            ":hammer:",
-            ":globe_with_meridians:",
-            ":package:",
-            ":truck:",
-            ":bento:",
-            ":card_file_box:",
-            ":loud_sound:",
-            ":mute:",
-            ":building_construction:",
-            ":camera_flash:",
-            ":label:",
-            ":seedling:",
-            ":triangular_flag_on_post:",
-            ":dizzy:",
-            ":adhesive_bandage:",
-            ":monocle_face:",
-            ":necktie:",
-            ":stethoscope:",
-            ":technologist:",
-            ":thread:",
-            ":safety_vest:",
+            (":art:", "🎨"),
+            (":ambulance:", "🚑️"),
+            (":lock:", "🔒️"),
+            (":bug:", "🐛"),
+            (":zap:", "⚡️"),
+            (":goal_net:", "🥅"),
+            (":alien:", "👽️"),
+            (":wheelchair:", "♿️"),
+            (":speech_balloon:", "💬"),
+            (":mag:", "🔍️"),
+            (":fire:", "🔥"),
+            (":white_check_mark:", "✅"),
+            (":closed_lock_with_key:", "🔐"),
+            (":rotating_light:", "🚨"),
+            (":green_heart:", "💚"),
+            (":arrow_down:", "⬇️"),
+            (":arrow_up:", "⬆️"),
+            (":pushpin:", "📌"),
+            (":construction_worker:", "👷"),
+            (":recycle:", "♻️"),
+            (":wrench:", "🔧"),
+            (":hammer:", "🔨"),
+            (":globe_with_meridians:", "🌐"),
+            (":package:", "📦️"),
+            (":truck:", "🚚"),
+            (":bento:", "🍱"),
+            (":card_file_box:", "🗃️"),
+            (":loud_sound:", "🔊"),
+            (":mute:", "🔇"),
+            (":building_construction:", "🏗️"),
+            (":camera_flash:", "📸"),
+            (":label:", "🏷️"),
+            (":seedling:", "🌱"),
+            (":triangular_flag_on_post:", "🚩"),
+            (":dizzy:", "💫"),
+            (":adhesive_bandage:", "🩹"),
+            (":monocle_face:", "🧐"),
+            (":necktie:", "👔"),
+            (":stethoscope:", "🩺"),
+            (":technologist:", "🧑‍💻"),
+            (":thread:", "🧵"),
+            (":safety_vest:", "🦺"),
         ];
         let other_tags = [
-            ":memo:",
-            ":rocket:",
-            ":tada:",
-            ":bookmark:",
-            ":construction:",
-            ":pencil2:",
-            ":poop:",
-            ":rewind:",
-            ":twisted_rightwards_arrows:",
-            ":page_facing_up:",
-            ":bulb:",
-            ":beers:",
-            ":bust_in_silhouette:",
-            ":clown_face:",
-            ":see_no_evil:",
-            ":alembic:",
-            ":wastebasket:",
-            ":coffin:",
-            ":test_tube:",
-            ":bricks:",
-            ":money_with_wings:",
+            (":memo:", "📝"),
+            (":rocket:", "🚀"),
+            (":tada:", "🎉"),
+            (":bookmark:", "🔖"),
+            (":construction:", "🚧"),
+            (":pencil2:", "✏️"),
+            (":poop:", "💩"),
+            (":rewind:", "⏪️"),
+            (":twisted_rightwards_arrows:", "🔀"),
+            (":page_facing_up:", "📄"),
+            (":bulb:", "💡"),
+            (":beers:", "🍻"),
+            (":bust_in_silhouette:", "👥"),
+            (":clown_face:", "🤡"),
+            (":see_no_evil:", "🙈"),
+            (":alembic:", "⚗️"),
+            (":wastebasket:", "🗑️"),
+            (":coffin:", "⚰️"),
+            (":test_tube:", "🧪"),
+            (":bricks:", "🧱"),
+            (":money_with_wings:", "💸"),
         ];
 
         Self {
@@ -231,11 +231,14 @@ fn convert_to_string_vector(commits: Vec<ConventionalCommit>) -> Vec<String> {
 
 fn get_commits_with_tag(
     commits: Vec<ConventionalCommit>,
-    tags: Vec<&str>,
+    tags: Vec<(&str, &str)>,
 ) -> Vec<ConventionalCommit> {
     commits
         .into_iter()
-        .filter(|commit| tags.iter().any(|tag| commit.message.contains(tag)))
+        .filter(|commit| {
+            tags.iter()
+                .any(|tag| commit.message.contains(tag.0) || commit.message.contains(tag.1))
+        })
         .collect()
 }
 
@@ -351,8 +354,8 @@ mod get_commits_functionality {
     /// ## Returns
     /// `true` if the result and expected commit messages are the same, `false` otherwise.
     fn compare(
-        result_of_get_commits: &Vec<ConventionalCommit>,
-        expected_commits: &Vec<&str>,
+        result_of_get_commits: &[ConventionalCommit],
+        expected_commits: &[&str],
     ) -> bool {
         let collected_commit_messages: HashSet<_> =
             result_of_get_commits.iter().map(|c| c.message()).collect();
@@ -434,7 +437,7 @@ mod changes_struct {
     fn creating_from_only_major_conventional_commits() {
         // Given
         let commits = vec![ConventionalCommit {
-            message: ":boom: introduce breaking changes".to_string(),
+            message: "💥 introduce breaking changes".to_string(),
         }];
 
         // When
@@ -461,7 +464,7 @@ mod changes_struct {
                 message: ":children_crossing: improve user experience / usability".to_string(),
             },
             ConventionalCommit {
-                message: ":lipstick: add or update the UI and style files".to_string(),
+                message: "💄 add or update the UI and style files".to_string(),
             },
             ConventionalCommit {
                 message: ":iphone: work on responsive design".to_string(),
@@ -511,7 +514,7 @@ mod changes_struct {
                 message: ":lock: fix security or privacy issues".to_string(),
             },
             ConventionalCommit {
-                message: ":bug: fix a bug".to_string(),
+                message: "🐛 fix a bug".to_string(),
             },
             ConventionalCommit {
                 message: ":zap: improve performance".to_string(),
@@ -681,7 +684,7 @@ mod changes_struct {
                 message: ":bulb: add or update comments in source code".to_string(),
             },
             ConventionalCommit {
-                message: ":beers: write code drunkenly".to_string(),
+                message: "🍻 write code drunkenly".to_string(),
             },
             ConventionalCommit {
                 message: ":bust_in_silhouette: add or update contributor(s)".to_string(),
