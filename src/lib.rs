@@ -4,55 +4,6 @@ use git2::{Commit, Repository};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Display;
-/// Get the commit messages from a given git repository.
-/// ## Returns
-/// A vector containing the commits or an error type when an error occurs.
-fn get_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
-    let mut revwalk = repository.revwalk()?;
-    revwalk.push_head()?;
-
-    let commits_in_repo: Vec<Commit> = revwalk
-        .filter_map(|object_id| object_id.ok())
-        .filter_map(|valid_object_id| repository.find_commit(valid_object_id).ok())
-        .collect();
-
-    Ok(commits_in_repo
-        .into_iter()
-        .map(|commit| ConventionalCommit::from_git2_commit(commit))
-        .collect())
-}
-
-/// A structure to represent a git commit.
-///
-/// Can be created with [`from_git2_commit`] method
-#[derive(Clone, Debug, PartialEq, Hash, Eq)]
-struct ConventionalCommit {
-    message: String,
-}
-
-impl ConventionalCommit {
-    /// Create [`Commit`] from [`git2::Commit`] object.
-    ///
-    /// [`Commit`]: ConventionalCommit
-    /// ['git2::Commit`]: git2::Commit
-    pub fn from_git2_commit(commit: git2::Commit) -> Self {
-        // TODO(kk): return error type when the git2 commit message is not conventional
-        Self {
-            message: commit.message().unwrap().to_string(),
-        }
-    }
-
-    /// Return a reference to the `message` attribute
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-}
-
-impl Display for ConventionalCommit {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
 
 /// Structure that represents the changes in a git repository
 #[derive(PartialEq, Debug, Hash)]
@@ -260,6 +211,59 @@ impl Display for Changes {
     }
 }
 
+/// Enum to represent the action for semantic version
+#[derive(PartialEq, Debug)]
+pub enum SemanticVersion {
+    IncrementMajor,
+    IncrementMinor,
+    IncrementPatch,
+    Keep,
+}
+
+impl Display for SemanticVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg = match self {
+            SemanticVersion::IncrementMajor => "increment major version",
+            SemanticVersion::IncrementMinor => "increment minor version",
+            SemanticVersion::IncrementPatch => "increment patch version",
+            SemanticVersion::Keep => "keep version",
+        };
+        write!(f, "{}", msg)
+    }
+}
+
+/// A structure to represent a git commit.
+///
+/// Can be created with [`from_git2_commit`] method
+#[derive(Clone, Debug, PartialEq, Hash, Eq)]
+struct ConventionalCommit {
+    message: String,
+}
+
+impl ConventionalCommit {
+    /// Create [`Commit`] from [`git2::Commit`] object.
+    ///
+    /// [`Commit`]: ConventionalCommit
+    /// ['git2::Commit`]: git2::Commit
+    pub fn from_git2_commit(commit: git2::Commit) -> Self {
+        // TODO(kk): return error type when the git2 commit message is not conventional
+        Self {
+            message: commit.message().unwrap().to_string(),
+        }
+    }
+
+    /// Return a reference to the `message` attribute
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl Display for ConventionalCommit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
 fn convert_to_string_vector(commits: Vec<ConventionalCommit>) -> Vec<String> {
     commits
         .into_iter()
@@ -280,25 +284,22 @@ fn get_commits_with_tag(
         .collect()
 }
 
-/// Enum to represent the action for semantic version
-#[derive(PartialEq, Debug)]
-pub enum SemanticVersion {
-    IncrementMajor,
-    IncrementMinor,
-    IncrementPatch,
-    Keep,
-}
+/// Get the commit messages from a given git repository.
+/// ## Returns
+/// A vector containing the commits or an error type when an error occurs.
+fn get_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+    let mut revwalk = repository.revwalk()?;
+    revwalk.push_head()?;
 
-impl Display for SemanticVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg = match self {
-            SemanticVersion::IncrementMajor => "increment major version",
-            SemanticVersion::IncrementMinor => "increment minor version",
-            SemanticVersion::IncrementPatch => "increment patch version",
-            SemanticVersion::Keep => "keep version",
-        };
-        write!(f, "{}", msg)
-    }
+    let commits_in_repo: Vec<Commit> = revwalk
+        .filter_map(|object_id| object_id.ok())
+        .filter_map(|valid_object_id| repository.find_commit(valid_object_id).ok())
+        .collect();
+
+    Ok(commits_in_repo
+        .into_iter()
+        .map(|commit| ConventionalCommit::from_git2_commit(commit))
+        .collect())
 }
 
 #[cfg(test)]
