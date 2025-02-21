@@ -137,7 +137,7 @@ impl Changes {
     ///
     /// ## Returns
     ///
-    /// [`SemanticVersion`] enum for the suggested semantic version change.
+    /// [`SemanticVersionAction`] enum for the suggested semantic version change.
     ///
     /// ## Example
     ///
@@ -150,17 +150,17 @@ impl Changes {
     ///  let action = Changes::from_repo(&git_repo).define_action_for_semantic_version();
     ///  println!("suggested change of semantic version: {}", action);
     /// ```
-    pub fn define_action_for_semantic_version(self) -> SemanticVersion {
+    pub fn define_action_for_semantic_version(self) -> SemanticVersionAction {
         if !self.major.is_empty() {
-            return SemanticVersion::IncrementMajor;
+            return SemanticVersionAction::IncrementMajor;
         }
         if !self.minor.is_empty() {
-            return SemanticVersion::IncrementMinor;
+            return SemanticVersionAction::IncrementMinor;
         }
         if !self.patch.is_empty() {
-            return SemanticVersion::IncrementPatch;
+            return SemanticVersionAction::IncrementPatch;
         }
-        SemanticVersion::Keep
+        SemanticVersionAction::Keep
     }
 
     /// Compare two [`Changes`] struct to see if they have the same elements.
@@ -213,20 +213,20 @@ impl Display for Changes {
 
 /// Enum to represent the action for semantic version
 #[derive(PartialEq, Debug)]
-pub enum SemanticVersion {
+pub enum SemanticVersionAction {
     IncrementMajor,
     IncrementMinor,
     IncrementPatch,
     Keep,
 }
 
-impl Display for SemanticVersion {
+impl Display for SemanticVersionAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match self {
-            SemanticVersion::IncrementMajor => "increment major version",
-            SemanticVersion::IncrementMinor => "increment minor version",
-            SemanticVersion::IncrementPatch => "increment patch version",
-            SemanticVersion::Keep => "keep version",
+            SemanticVersionAction::IncrementMajor => "increment major version",
+            SemanticVersionAction::IncrementMinor => "increment minor version",
+            SemanticVersionAction::IncrementPatch => "increment patch version",
+            SemanticVersionAction::Keep => "keep version",
         };
         write!(f, "{}", msg)
     }
@@ -716,7 +716,7 @@ mod changes_struct {
 
 #[cfg(test)]
 mod evaluate_changes {
-    use crate::{Changes, ConventionalCommit, SemanticVersion};
+    use crate::{Changes, ConventionalCommit, SemanticVersionAction};
 
     #[test]
     fn has_no_changes() {
@@ -734,7 +734,7 @@ mod evaluate_changes {
         let result = changes.define_action_for_semantic_version();
 
         // Then
-        assert_eq!(result, SemanticVersion::Keep);
+        assert_eq!(result, SemanticVersionAction::Keep);
     }
 
     #[test]
@@ -755,7 +755,7 @@ mod evaluate_changes {
         let result = changes.define_action_for_semantic_version();
 
         // Then
-        assert_eq!(result, SemanticVersion::IncrementPatch);
+        assert_eq!(result, SemanticVersionAction::IncrementPatch);
     }
 
     #[test]
@@ -778,7 +778,7 @@ mod evaluate_changes {
         let result = changes.define_action_for_semantic_version();
 
         // Then
-        assert_eq!(result, SemanticVersion::IncrementMinor);
+        assert_eq!(result, SemanticVersionAction::IncrementMinor);
     }
 
     #[test]
@@ -803,6 +803,6 @@ mod evaluate_changes {
         let result = changes.define_action_for_semantic_version();
 
         // Then
-        assert_eq!(result, SemanticVersion::IncrementMajor);
+        assert_eq!(result, SemanticVersionAction::IncrementMajor);
     }
 }
