@@ -354,8 +354,8 @@ mod get_commits_functionality {
     /// ## Returns
     /// `true` if the result and expected commit messages are the same, `false` otherwise.
     fn compare(
-        result_of_get_commits: &Vec<ConventionalCommit>,
-        expected_commits: &Vec<&str>,
+        result_of_get_commits: &[ConventionalCommit],
+        expected_commits: &[&str],
     ) -> bool {
         let collected_commit_messages: HashSet<_> =
             result_of_get_commits.iter().map(|c| c.message()).collect();
