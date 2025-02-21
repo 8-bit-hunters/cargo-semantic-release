@@ -3,3 +3,5 @@ ci
 gitmoji
 versioning
 enum
+struct
+repo

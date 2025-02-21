@@ -1,29 +1,13 @@
+mod test_util;
+
 use git2::{Commit, Repository};
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Display;
-
 /// Get the commit messages from a given git repository.
 /// ## Returns
 /// A vector containing the commits or an error type when an error occurs.
-/// ## Examples
-/// ```
-///  use std::env;
-///  use git2::Repository;
-///  use cargo_semantic_release::get_commits;
-///
-///  let git_repo = Repository::open(".").unwrap();
-///
-///  let commits = get_commits(&git_repo).unwrap_or_else(|error| {
-///     eprintln!("{}", error);
-///     Vec::new()
-///  });
-///
-///  println!("Commits in the directory:");
-///  for commit in commits {
-///     println!("\t{}", commit.message().trim_end());
-///  }
-/// ```
-pub fn get_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+fn get_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
     let mut revwalk = repository.revwalk()?;
     revwalk.push_head()?;
 
@@ -41,22 +25,8 @@ pub fn get_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, B
 /// A structure to represent a git commit.
 ///
 /// Can be created with [`from_git2_commit`] method
-///
-/// [`from_git2_commit`]: ConventionalCommit::from_git2_commit
-/// ## Example
-/// ```
-///  use git2::Repository;
-///  use cargo_semantic_release::{ConventionalCommit};
-///
-///  let repo = Repository::open(".").unwrap();
-///  let commit_oid = repo.head().unwrap().target().unwrap();
-///  let git2_commit = repo.find_commit(commit_oid).unwrap();
-///
-///  let commit = ConventionalCommit::from_git2_commit(git2_commit);
-///
-/// ```
-#[derive(Clone, Debug, PartialEq)]
-pub struct ConventionalCommit {
+#[derive(Clone, Debug, PartialEq, Hash, Eq)]
+struct ConventionalCommit {
     message: String,
 }
 
@@ -85,7 +55,7 @@ impl Display for ConventionalCommit {
 }
 
 /// Structure that represents the changes in a git repository
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Hash)]
 pub struct Changes {
     /// Vector of commits with major changes
     major: Vec<ConventionalCommit>,
@@ -98,24 +68,24 @@ pub struct Changes {
 }
 
 impl Changes {
-    /// Sort the commits into `major`, `minor`, `patch` and `other` change categories
-    /// according to their commit flags.
+    /// Sort the commits from a given repo into `major`, `minor`, `patch` and `other`
+    /// change categories according to their commit flags.
     ///
     /// ## Returns
     ///
-    /// The [`Changes`] structure with the sorted commits.
+    /// The [`Changes`] structure with the sorted commits or error type.
     ///
     /// ## Example
     /// ```
     /// use git2::Repository;
-    /// use cargo_semantic_release::{get_commits , Changes};
+    /// use cargo_semantic_release::Changes;
     ///
     /// let git_repo = Repository::open(".").unwrap();
-    /// let commits = get_commits(&git_repo).unwrap();
     ///
-    /// let changes = Changes::sort_commits(commits);
+    /// let changes = Changes::from_repo(&git_repo);
+    /// println!("changes: {changes}")
     /// ```
-    pub fn sort_commits(unsorted_commits: Vec<ConventionalCommit>) -> Self {
+    pub fn from_repo(repository: &Repository) -> Self {
         let major_tags = [(":boom:", "💥")];
         let minor_tags = [
             (":sparkles:", "✨"),
@@ -196,11 +166,19 @@ impl Changes {
             (":money_with_wings:", "💸"),
         ];
 
-        Self {
-            major: get_commits_with_tag(unsorted_commits.clone(), major_tags.to_vec()),
-            minor: get_commits_with_tag(unsorted_commits.clone(), minor_tags.to_vec()),
-            patch: get_commits_with_tag(unsorted_commits.clone(), patch_tags.to_vec()),
-            other: get_commits_with_tag(unsorted_commits, other_tags.to_vec()),
+        match get_commits(repository) {
+            Ok(unsorted_commits) => Self {
+                major: get_commits_with_tag(unsorted_commits.clone(), major_tags.to_vec()),
+                minor: get_commits_with_tag(unsorted_commits.clone(), minor_tags.to_vec()),
+                patch: get_commits_with_tag(unsorted_commits.clone(), patch_tags.to_vec()),
+                other: get_commits_with_tag(unsorted_commits, other_tags.to_vec()),
+            },
+            Err(_) => Self {
+                major: Vec::new(),
+                minor: Vec::new(),
+                patch: Vec::new(),
+                other: Vec::new(),
+            },
         }
     }
 
@@ -214,12 +192,11 @@ impl Changes {
     ///
     /// ```
     ///  use git2::Repository;
-    ///  use cargo_semantic_release::{get_commits, Changes};
+    ///  use cargo_semantic_release::Changes;
     ///
     ///  let git_repo = Repository::open(".").unwrap();
-    ///  let commits = get_commits(&git_repo).unwrap();
     ///
-    ///  let action = Changes::sort_commits(commits).define_action_for_semantic_version();
+    ///  let action = Changes::from_repo(&git_repo).define_action_for_semantic_version();
     ///  println!("suggested change of semantic version: {}", action);
     /// ```
     pub fn define_action_for_semantic_version(self) -> SemanticVersion {
@@ -233,6 +210,36 @@ impl Changes {
             return SemanticVersion::IncrementPatch;
         }
         SemanticVersion::Keep
+    }
+
+    /// Compare two [`Changes`] struct to see if they have the same elements.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the two structure has the same elements regardless they order, `false` otherwise.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use git2::Repository;
+    /// use cargo_semantic_release::Changes;
+    ///
+    /// let git_repo = Repository::open(".").unwrap();
+    ///
+    /// let changes_1 = Changes::from_repo(&git_repo);
+    /// let changes_2 = Changes::from_repo(&git_repo);
+    ///
+    /// let result = changes_1.has_same_elements(&changes_2);
+    /// println!("{result}")
+    /// ```
+    pub fn has_same_elements(&self, other: &Self) -> bool {
+        self.major.iter().collect::<HashSet<_>>() == other.major.iter().collect::<HashSet<_>>()
+            && self.minor.iter().collect::<HashSet<_>>()
+                == other.minor.iter().collect::<HashSet<_>>()
+            && self.patch.iter().collect::<HashSet<_>>()
+                == other.patch.iter().collect::<HashSet<_>>()
+            && self.other.iter().collect::<HashSet<_>>()
+                == other.other.iter().collect::<HashSet<_>>()
     }
 }
 
@@ -296,63 +303,18 @@ impl Display for SemanticVersion {
 
 #[cfg(test)]
 mod get_commits_functionality {
+    use crate::test_util::{add_commit, repo_init};
     use crate::{get_commits, ConventionalCommit};
-    use git2::{Repository, RepositoryInitOptions};
     use std::collections::HashSet;
-    use tempfile::TempDir;
-
-    #[doc(hidden)]
-    /// Create an empty git repository in a temporary directory.
-    /// # Returns
-    /// The handler for the temporary directory and for the git repository.
-    fn repo_init() -> (TempDir, Repository) {
-        let temp_dir = TempDir::new().unwrap();
-        let mut opts = RepositoryInitOptions::new();
-        opts.initial_head("main");
-        let repo = Repository::init_opts(temp_dir.path(), &opts).unwrap();
-        let mut config = repo.config().unwrap();
-        config.set_str("user.name", "name").unwrap();
-        config.set_str("user.email", "email").unwrap();
-        (temp_dir, repo)
-    }
-
-    #[doc(hidden)]
-    /// Add commit to a given repository.
-    /// ## Returns
-    /// The modified repository.
-    fn add_commit(repository: Repository, commit_messages: String) -> Repository {
-        {
-            let id = repository.index().unwrap().write_tree().unwrap();
-            let tree = repository.find_tree(id).unwrap();
-            let sig = repository.signature().unwrap();
-
-            let parents = repository
-                .head()
-                .ok()
-                .and_then(|head| head.peel_to_commit().ok());
-            let parents = match &parents {
-                Some(commit) => vec![commit],
-                None => vec![],
-            };
-
-            let _ = repository.commit(
-                Some("HEAD"),
-                &sig,
-                &sig,
-                commit_messages.as_str(),
-                &tree,
-                &parents,
-            );
-        }
-
-        repository
-    }
 
     #[doc(hidden)]
     /// Compare the result of `get_commits` function with the expected commit messages.
     /// ## Returns
     /// `true` if the result and expected commit messages are the same, `false` otherwise.
-    fn compare(result_of_get_commits: &[ConventionalCommit], expected_commits: &[&str]) -> bool {
+    pub fn compare(
+        result_of_get_commits: &[ConventionalCommit],
+        expected_commits: &[&str],
+    ) -> bool {
         let collected_commit_messages: HashSet<_> =
             result_of_get_commits.iter().map(|c| c.message()).collect();
         let committed_messages: HashSet<_> = expected_commits.iter().copied().collect();
@@ -408,16 +370,17 @@ mod get_commits_functionality {
 
 #[cfg(test)]
 mod changes_struct {
+    use crate::test_util::{add_commit, repo_init};
     use crate::Changes;
     use crate::ConventionalCommit;
 
     #[test]
     fn creating_from_empty_commit_list() {
         // Given
-        let commits = Vec::<ConventionalCommit>::new();
+        let (_temp_dir, repository) = repo_init();
 
         // When
-        let result = Changes::sort_commits(commits);
+        let result = Changes::from_repo(&repository);
 
         // Then
         let expected_result = Changes {
@@ -435,9 +398,13 @@ mod changes_struct {
         let commits = vec![ConventionalCommit {
             message: "💥 introduce breaking changes".to_string(),
         }];
+        let (_temp_dir, mut repository) = repo_init();
+        for commit in &commits {
+            repository = add_commit(repository, commit.message.to_string());
+        }
 
         // When
-        let result = Changes::sort_commits(commits.clone());
+        let result = Changes::from_repo(&repository);
 
         // Then
         let expected_result = Changes {
@@ -482,9 +449,13 @@ mod changes_struct {
                 message: ":passport_control: work on code related to authorization, roles and permissions".to_string(),
             },
         ];
+        let (_temp_dir, mut repository) = repo_init();
+        for commit in &commits {
+            repository = add_commit(repository, commit.message.to_string());
+        }
 
         // When
-        let result = Changes::sort_commits(commits.clone());
+        let result = Changes::from_repo(&repository);
 
         // Then
         let expected_result = Changes {
@@ -493,7 +464,10 @@ mod changes_struct {
             patch: Vec::new(),
             other: Vec::new(),
         };
-        assert_eq!(result, expected_result);
+        assert!(
+            result.has_same_elements(&expected_result),
+            "Result doens't have same elements as expected"
+        );
     }
 
     #[test]
@@ -629,9 +603,13 @@ mod changes_struct {
                 message: ":safety_vest: add or update code related to validation".to_string(),
             },
         ];
+        let (_temp_dir, mut repository) = repo_init();
+        for commit in &commits {
+            repository = add_commit(repository, commit.message.to_string());
+        }
 
         // When
-        let result = Changes::sort_commits(commits.clone());
+        let result = Changes::from_repo(&repository);
 
         // Then
         let expected_result = Changes {
@@ -640,7 +618,10 @@ mod changes_struct {
             patch: commits,
             other: Vec::new(),
         };
-        assert_eq!(result, expected_result);
+        assert!(
+            result.has_same_elements(&expected_result),
+            "Result doens't have same elements as expected"
+        );
     }
 
     #[test]
@@ -711,9 +692,13 @@ mod changes_struct {
                     .to_string(),
             },
         ];
+        let (_temp_dir, mut repository) = repo_init();
+        for commit in &commits {
+            repository = add_commit(repository, commit.message.to_string());
+        }
 
         // When
-        let result = Changes::sort_commits(commits.clone());
+        let result = Changes::from_repo(&repository);
 
         // Then
         let expected_result = Changes {
@@ -722,7 +707,10 @@ mod changes_struct {
             patch: Vec::new(),
             other: commits,
         };
-        assert_eq!(result, expected_result);
+        assert!(
+            result.has_same_elements(&expected_result),
+            "Result doens't have same elements as expected"
+        );
     }
 }
 

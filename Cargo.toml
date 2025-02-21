@@ -10,8 +10,6 @@ homepage = "https://8-bit-hunters.github.io/cargo-semantic-release/"
 
 [dependencies]
 git2 = "0.20.0"
-
-[dev-dependencies]
 tempfile = "3.16.0"
 
 [workspace.metadata.spellcheck]
