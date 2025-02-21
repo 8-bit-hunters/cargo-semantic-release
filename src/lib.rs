@@ -203,6 +203,37 @@ impl Changes {
             other: get_commits_with_tag(unsorted_commits, other_tags.to_vec()),
         }
     }
+
+    /// Evaluate the changes find in a repository to figure out the semantic version action
+    ///
+    /// ## Returns
+    ///
+    /// [`SemanticVersion`] enum for the suggested semantic version change.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    ///  use git2::Repository;
+    ///  use cargo_semantic_release::{get_commits, Changes};
+    ///
+    ///  let git_repo = Repository::open(".").unwrap();
+    ///  let commits = get_commits(&git_repo).unwrap();
+    ///
+    ///  let action = Changes::sort_commits(commits).define_action_for_semantic_version();
+    ///  println!("suggested change of semantic version: {}", action);
+    /// ```
+    pub fn define_action_for_semantic_version(self) -> SemanticVersion {
+        if !self.major.is_empty() {
+            return SemanticVersion::IncrementMajor;
+        }
+        if !self.minor.is_empty() {
+            return SemanticVersion::IncrementMinor;
+        }
+        if !self.patch.is_empty() {
+            return SemanticVersion::IncrementPatch;
+        }
+        SemanticVersion::Keep
+    }
 }
 
 impl Display for Changes {
@@ -261,38 +292,6 @@ impl Display for SemanticVersion {
         };
         write!(f, "{}", msg)
     }
-}
-
-/// Evaluate the changes find in a repository to figure out the semantic version action
-///
-/// ## Returns
-///
-/// [`SemanticVersion`] enum for the suggested semantic version change.
-///
-/// ## Example
-///
-/// ```
-///  use git2::Repository;
-///  use cargo_semantic_release::{evaluate_changes, get_commits, Changes};
-///
-///  let git_repo = Repository::open(".").unwrap();
-///  let commits = get_commits(&git_repo).unwrap();
-///  let changes = Changes::sort_commits(commits);
-///
-///  let action = evaluate_changes(changes);
-///  println!("suggested change of semantic version: {}", action);
-/// ```
-pub fn evaluate_changes(changes: Changes) -> SemanticVersion {
-    if !changes.major.is_empty() {
-        return SemanticVersion::IncrementMajor;
-    }
-    if !changes.minor.is_empty() {
-        return SemanticVersion::IncrementMinor;
-    }
-    if !changes.patch.is_empty() {
-        return SemanticVersion::IncrementPatch;
-    }
-    SemanticVersion::Keep
 }
 
 #[cfg(test)]
@@ -729,7 +728,7 @@ mod changes_struct {
 
 #[cfg(test)]
 mod evaluate_changes {
-    use crate::{evaluate_changes, Changes, ConventionalCommit, SemanticVersion};
+    use crate::{Changes, ConventionalCommit, SemanticVersion};
 
     #[test]
     fn has_no_changes() {
@@ -744,7 +743,7 @@ mod evaluate_changes {
         };
 
         // When
-        let result = evaluate_changes(changes);
+        let result = changes.define_action_for_semantic_version();
 
         // Then
         assert_eq!(result, SemanticVersion::Keep);
@@ -765,7 +764,7 @@ mod evaluate_changes {
         };
 
         // When
-        let result = evaluate_changes(changes);
+        let result = changes.define_action_for_semantic_version();
 
         // Then
         assert_eq!(result, SemanticVersion::IncrementPatch);
@@ -788,7 +787,7 @@ mod evaluate_changes {
         };
 
         // When
-        let result = evaluate_changes(changes);
+        let result = changes.define_action_for_semantic_version();
 
         // Then
         assert_eq!(result, SemanticVersion::IncrementMinor);
@@ -813,7 +812,7 @@ mod evaluate_changes {
         };
 
         // When
-        let result = evaluate_changes(changes);
+        let result = changes.define_action_for_semantic_version();
 
         // Then
         assert_eq!(result, SemanticVersion::IncrementMajor);
