@@ -1,0 +1,105 @@
+name: Bug Report
+description: Report a bug in `cargo semantic-release`
+title: "[Bug]: "
+labels: [bug]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: "## 🐛 Bug Report\nPlease provide a clear and concise description of the issue."
+
+  - type: input
+    id: bug-summary
+    attributes:
+      label: "Brief Summary"
+      description: "Short description of the bug"
+      placeholder: "`cargo semantic-release` fails with an error"
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: "Describe the bug"
+      description: "A clear and concise description of what the bug is."
+      placeholder: "Explain what happened..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: "Steps to reproduce"
+      description: "Steps to reproduce the issue"
+      placeholder: |
+        1. Run `cargo semantic-release`
+        2. Observe the error message
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: "Expected behavior"
+      description: "What you expected to happen instead"
+      placeholder: "`cargo semantic-release` should generate a correct changelog and publish the release."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: version
+    attributes:
+      label: "Version"
+      description: What version of our software are you running?
+      options:
+        - 0.1.0
+        - 0.2.0
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: "Environment"
+      description: "System details where the bug occurred"
+      placeholder: "e.g., Fedora 39"
+
+  - type: textarea
+    id: rust-toolchain
+    attributes:
+      label: "Rust Toolchain & Dependencies"
+      description: "Output of `rustc --version`, `cargo --version`, and relevant dependencies"
+      placeholder: |
+        rustc 1.75.0 (abcdefg 2025-02-15)
+        cargo 1.75.0 (123456789 2025-02-15)
+        Dependencies:
+        - git2 0.18.3
+        - semver 1.0.20
+      render: shell
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs, Error Messages, or Stack Trace"
+      description: "Paste relevant logs or error messages"
+      placeholder: "`cargo semantic-release` panicked with 'failed to parse version'"
+      render: shell
+
+  - type: textarea
+    id: backtrace
+    attributes:
+      label: "Backtrace (if applicable)"
+      description: "Run with `RUST_BACKTRACE=1` and paste the output"
+      placeholder: "RUST_BACKTRACE=1 cargo semantic-release"
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: "Checklist"
+      options:
+        - label: "I have searched for duplicate issues."
+          required: true
+        - label: "I have run `cargo clean && cargo build` to ensure it's not a stale build issue."
+        - label: "I have tried running with `RUST_LOG=debug` if applicable."
