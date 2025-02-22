@@ -1,4 +1,4 @@
-use git2::{Repository, RepositoryInitOptions};
+use git2::{Commit, Repository, RepositoryInitOptions, Revwalk, Signature};
 use tempfile::TempDir;
 
 #[doc(hidden)]
@@ -48,4 +48,32 @@ pub fn add_commit(repository: Repository, commit_messages: String) -> Repository
     }
 
     repository
+}
+
+#[doc(hidden)]
+#[allow(dead_code)]
+/// Add tag to a given commit.
+/// ## Returns
+/// The modified repository.
+pub fn add_tag(repository: &Repository, commit: Commit, tag_name: &str) {
+    let signature = Signature::now("name", "email").unwrap();
+    let _ = repository.tag(tag_name, &commit.into_object(), &signature, "", false);
+}
+
+#[doc(hidden)]
+#[allow(dead_code)]
+/// Find a commit by its message
+/// ## Result
+/// The commit if it's found, None if it's not found
+pub fn find_commit_by_message<'repo>(
+    repository: &'repo Repository,
+    commit_message: &str,
+) -> Option<Commit<'repo>> {
+    let mut revwalk: Revwalk = repository.revwalk().unwrap();
+    revwalk.push_head().unwrap();
+    revwalk.set_sorting(git2::Sort::TIME).unwrap();
+
+    revwalk
+        .map(|oid| repository.find_commit(oid.unwrap()).unwrap())
+        .find(|commit| commit.message().unwrap().contains(commit_message))
 }
