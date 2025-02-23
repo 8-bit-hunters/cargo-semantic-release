@@ -1,6 +1,8 @@
 mod test_util;
 
-use git2::{Commit, Repository};
+use git2::{ObjectType, Oid, Reference, Repository, Tag};
+use regex::Regex;
+use semver::Version;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Display;
@@ -21,6 +23,9 @@ pub struct Changes {
 impl Changes {
     /// Sort the commits from a given repo into `major`, `minor`, `patch` and `other`
     /// change categories according to their commit flags.
+    ///
+    /// Commits are fetched since the latest version tag. If there are no version tags yet
+    /// then all the commits from the repository are fetched.
     ///
     /// ## Returns
     ///
@@ -117,7 +122,7 @@ impl Changes {
             (":money_with_wings:", "💸"),
         ];
 
-        match get_commits(repository) {
+        match get_commits_since_last_version(repository) {
             Ok(unsorted_commits) => Self {
                 major: get_commits_with_tag(unsorted_commits.clone(), major_tags.to_vec()),
                 minor: get_commits_with_tag(unsorted_commits.clone(), minor_tags.to_vec()),
@@ -283,28 +288,243 @@ fn get_commits_with_tag(
         .collect()
 }
 
-/// Get the commit messages from a given git repository.
+/// Get the commit messages since the last version tag from a given git repository.
+///
+/// If the repository doesn't have version tags, then it will return all the commits.
+///
 /// ## Returns
-/// A vector containing the commits or an error type when an error occurs.
-fn get_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+/// A vector containing the commits or an error type if an error occurs.
+fn get_commits_since_last_version(
+    repository: &Repository,
+) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+    match get_latest_version_tag(repository)? {
+        Some(version_tag) => fetch_commits_until(repository, version_tag.commit_oid),
+        None => fetch_all_commits(repository),
+    }
+}
+
+fn fetch_commits_until(
+    repository: &Repository,
+    stop_iod: Oid,
+) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
     let mut revwalk = repository.revwalk()?;
     revwalk.push_head()?;
 
-    let commits_in_repo: Vec<Commit> = revwalk
+    Ok(revwalk
         .filter_map(|object_id| object_id.ok())
-        .filter_map(|valid_object_id| repository.find_commit(valid_object_id).ok())
-        .collect();
-
-    Ok(commits_in_repo
-        .into_iter()
+        .take_while(|oid| *oid != stop_iod)
+        .filter_map(|oid| repository.find_commit(oid).ok())
         .map(|commit| ConventionalCommit::from_git2_commit(commit))
         .collect())
 }
 
+fn fetch_all_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+    let mut revwalk = repository.revwalk()?;
+    revwalk.push_head()?;
+
+    Ok(revwalk
+        .filter_map(|object_id| object_id.ok())
+        .filter_map(|valid_oid| repository.find_commit(valid_oid).ok())
+        .map(|commit| ConventionalCommit::from_git2_commit(commit))
+        .collect())
+}
+
+/// Get the latest version tag.
+/// ## Returns
+/// [`VersionTag`] containing the latest version tag.
+fn get_latest_version_tag(repository: &Repository) -> Result<Option<VersionTag>, Box<dyn Error>> {
+    let mut version_tags: Vec<VersionTag> = Vec::new();
+
+    let references = repository.references()?;
+    for reference in references {
+        let reference = reference?;
+        if reference.is_tag() {
+            if let Some(oid) = reference.target() {
+                let object = repository.find_object(oid, None)?;
+
+                if let Ok(tag_object) = object.peel(ObjectType::Tag) {
+                    if let Some(tag) = tag_object.as_tag() {
+                        if let Some(version_tag) = VersionTag::from_annotated_tag(tag) {
+                            version_tags.push(version_tag);
+                        }
+                    }
+                } else if let Some(version_tag) = VersionTag::from_lightweight_tag(reference) {
+                    version_tags.push(version_tag);
+                }
+            }
+        }
+    }
+
+    Ok(version_tags.iter().max().cloned())
+}
+
+/// A structure that represent a version tag.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct VersionTag {
+    /// Semantic version parsed from the tag name.
+    pub version: Version,
+    /// Object ID of the commit that the tag points to.
+    pub commit_oid: Oid,
+}
+
+impl VersionTag {
+    /// Creates a [`VersionTag`] from an annotated git tag.
+    ///
+    /// ## Returns
+    ///
+    /// `Option` which is `Some` if the version tag is valid, `None` otherwise.
+    fn from_annotated_tag(tag: &Tag) -> Option<Self> {
+        let tag_name = tag.name().unwrap();
+        if !Self::is_valid_version_tag(tag_name) {
+            return None;
+        }
+        let version_number = tag_name.trim_start_matches("v");
+        Some(Self {
+            version: Version::parse(version_number).unwrap(),
+            commit_oid: tag.target_id(),
+        })
+    }
+
+    /// Creates a [`VersionTag`] from a lightweight git tag.
+    ///
+    /// ## Returns
+    ///
+    /// `Option` which is `Some` if the version tag is valid, `None` otherwise.
+    fn from_lightweight_tag(reference: Reference) -> Option<Self> {
+        let tag_name = reference.shorthand().unwrap();
+        if !Self::is_valid_version_tag(tag_name) {
+            return None;
+        }
+        let version_number = tag_name.trim_start_matches("v");
+        Some(Self {
+            version: Version::parse(version_number).unwrap(),
+            commit_oid: reference.target().unwrap(),
+        })
+    }
+
+    fn is_valid_version_tag(tag_name: &str) -> bool {
+        let version_regex = Regex::new(r"^v\d+\.\d+\.\d+$").unwrap();
+        version_regex.is_match(tag_name)
+    }
+}
+
+#[cfg(test)]
+mod get_latest_version_tag_tests {
+    use crate::get_latest_version_tag;
+    use crate::test_util::{add_commit, add_tag, find_commit_by_message, repo_init};
+    use semver::Version;
+
+    #[test]
+    fn repository_does_not_have_tags() {
+        // Given
+        let (_temp_dir, repository) = repo_init();
+
+        // When
+        let result = get_latest_version_tag(&repository).unwrap();
+
+        // Then
+        assert!(result.is_none(), "Expected None, but got Some")
+    }
+
+    #[test]
+    fn repository_does_not_have_version_tags() {
+        // Given
+        let (_temp_dir, mut repository) = repo_init();
+        repository = add_commit(repository, ":tada: initial release".to_string());
+        let commit = find_commit_by_message(&repository, ":tada: initial release");
+        add_tag(&repository, commit.unwrap(), "tag_1");
+
+        // When
+        let result = get_latest_version_tag(&repository).unwrap();
+
+        // Then
+        assert!(result.is_none(), "Expected None, but got Some")
+    }
+
+    #[test]
+    fn repository_has_one_annotated_version_tag() {
+        let (_temp_dir, mut repository) = repo_init();
+        let commit_message = ":tada: initial release";
+        repository = add_commit(repository, commit_message.to_string());
+        let commit = find_commit_by_message(&repository, commit_message);
+        add_tag(&repository, commit.unwrap(), "v1.0.0");
+
+        // When
+        let result = get_latest_version_tag(&repository).unwrap().unwrap();
+
+        // Then
+        assert_eq!(result.version, Version::parse("1.0.0").unwrap());
+        assert_eq!(
+            result.commit_oid,
+            find_commit_by_message(&repository, commit_message)
+                .unwrap()
+                .id(),
+            "Object IDs don't match"
+        );
+    }
+
+    #[test]
+    fn repository_has_one_not_annotated_version_tag() {
+        let (_temp_dir, mut repository) = repo_init();
+        let commit_message = ":tada: initial release";
+        repository = add_commit(repository, commit_message.to_string());
+        let commit = find_commit_by_message(&repository, commit_message).unwrap();
+        repository
+            .tag_lightweight("v1.0.0", commit.as_object(), false)
+            .unwrap();
+
+        // When
+        let result = get_latest_version_tag(&repository).unwrap().unwrap();
+
+        // Then
+        assert_eq!(result.version, Version::parse("1.0.0").unwrap());
+        assert_eq!(
+            result.commit_oid,
+            find_commit_by_message(&repository, commit_message)
+                .unwrap()
+                .id(),
+            "Object IDs don't match"
+        );
+    }
+
+    #[test]
+    fn repository_have_multiple_version_tags() {
+        // Given
+        let (_temp_dir, mut repository) = repo_init();
+        let commit_messages = vec![
+            ":tada: initial release",
+            ":sparkles: new feature",
+            ":boom: everything is broken",
+        ];
+        let tags = vec!["v1.0.0", "v1.1.0", "v2.0.0"];
+        for commit_message in &commit_messages {
+            repository = add_commit(repository, commit_message.to_string());
+        }
+        commit_messages
+            .iter()
+            .map(|commit| find_commit_by_message(&repository, commit).unwrap())
+            .zip(tags)
+            .for_each(|(commit_id, tag)| add_tag(&repository, commit_id, &tag));
+
+        // When
+        let result = get_latest_version_tag(&repository).unwrap().unwrap();
+
+        // Then
+        assert_eq!(result.version, Version::parse("2.0.0").unwrap());
+        assert_eq!(
+            result.commit_oid,
+            find_commit_by_message(&repository, commit_messages.last().unwrap())
+                .unwrap()
+                .id(),
+            "Object IDs don't match"
+        );
+    }
+}
+
 #[cfg(test)]
 mod get_commits_functionality {
-    use crate::test_util::{add_commit, repo_init};
-    use crate::{get_commits, ConventionalCommit};
+    use crate::test_util::{add_commit, add_tag, find_commit_by_message, repo_init};
+    use crate::{get_commits_since_last_version, ConventionalCommit};
     use std::collections::HashSet;
 
     #[doc(hidden)]
@@ -322,12 +542,12 @@ mod get_commits_functionality {
     }
 
     #[test]
-    fn getting_commits_from_repo_with_one_commit() {
+    fn getting_commits_from_repo_with_one_commit_without_tags() {
         // Given
         let (_temp_dir, repository) = repo_init();
         let repository = add_commit(repository, "initial_commit".to_string());
         // When
-        let result = get_commits(&repository).unwrap();
+        let result = get_commits_since_last_version(&repository).unwrap();
         // Then
         let expected_commit_messages = vec!["initial_commit"];
         assert!(
@@ -339,7 +559,7 @@ mod get_commits_functionality {
     }
 
     #[test]
-    fn getting_commits_from_repo_with_multiple_commits() {
+    fn getting_commits_from_repo_with_multiple_commits_without_tags() {
         // Given
         let (_temp_dir, mut repository) = repo_init();
         let commit_messages = vec!["commit 1", "commit 2", "commit 3"];
@@ -347,7 +567,7 @@ mod get_commits_functionality {
             repository = add_commit(repository, commit_message.to_string());
         }
         // When
-        let result = get_commits(&repository).unwrap();
+        let result = get_commits_since_last_version(&repository).unwrap();
         // Then
         assert!(
             compare(&result, &commit_messages),
@@ -362,9 +582,91 @@ mod get_commits_functionality {
         // Given
         let (_temp_dir, repository) = repo_init();
         // When
-        let result = get_commits(&repository);
+        let result = get_commits_since_last_version(&repository);
         // Then
         assert!(result.is_err(), "Expected and error, but got Ok")
+    }
+
+    #[test]
+    fn getting_commits_until_the_last_version_tag() {
+        // Given
+        let (_temp_dir, mut repository) = repo_init();
+        let commit_messages = vec![
+            ":tada: initial release",
+            ":sparkles: new feature",
+            ":boom: everything is broken",
+            ":memo: add some documentation",
+            ":recycle: refactor the code base",
+            ":rocket: to the moon",
+        ];
+        for commit_message in &commit_messages {
+            let message = *commit_message;
+            repository = add_commit(repository, message.to_string());
+        }
+        add_tag(
+            &repository,
+            find_commit_by_message(&repository, commit_messages[0]).unwrap(),
+            "v1.0.0",
+        );
+        add_tag(
+            &repository,
+            find_commit_by_message(&repository, commit_messages[1]).unwrap(),
+            "v1.1.0",
+        );
+        add_tag(
+            &repository,
+            find_commit_by_message(&repository, commit_messages[2]).unwrap(),
+            "v2.0.0",
+        );
+
+        // Then
+        let result = get_commits_since_last_version(&repository).unwrap();
+
+        let expected_commits = &commit_messages[3..];
+        assert!(
+            compare(&result, expected_commits),
+            "result = {:?}\nexpected messages = {:?}",
+            result,
+            expected_commits
+        )
+    }
+
+    #[test]
+    fn getting_commits_with_lightweight_tag() {
+        // Given
+        let (_temp_dir, mut repository) = repo_init();
+        let commit_messages = vec![
+            ":tada: initial release",
+            ":sparkles: new feature",
+            ":boom: everything is broken",
+            ":memo: add some documentation",
+            ":recycle: refactor the code base",
+            ":rocket: to the moon",
+        ];
+        for commit_message in &commit_messages {
+            let message = *commit_message;
+            repository = add_commit(repository, message.to_string());
+        }
+        let _ = repository
+            .tag_lightweight(
+                "v1.0.0",
+                find_commit_by_message(&repository, commit_messages[2])
+                    .unwrap()
+                    .as_object(),
+                false,
+            )
+            .unwrap();
+
+        // Then
+        let result = get_commits_since_last_version(&repository).unwrap();
+
+        let expected_commits = &commit_messages[3..];
+        assert!(
+            compare(&result, expected_commits),
+            "result = {:?}\nexpected messages = {:?}",
+            result,
+            expected_commits
+        )
     }
 }
 
