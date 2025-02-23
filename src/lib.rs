@@ -410,14 +410,15 @@ impl VersionTag {
 
 #[cfg(test)]
 mod get_latest_version_tag_tests {
-    use crate::get_latest_version_tag;
-    use crate::test_util::{add_commit, add_tag, find_commit_by_message, repo_init};
+    use crate::test_util::repo_init;
+    use crate::{get_latest_version_tag, test_util};
     use semver::Version;
+    pub use test_util::RepositoryTestExtensions;
 
     #[test]
     fn repository_does_not_have_tags() {
         // Given
-        let (_temp_dir, repository) = repo_init();
+        let (_temp_dir, repository) = repo_init(None);
 
         // When
         let result = get_latest_version_tag(&repository).unwrap();
@@ -429,10 +430,9 @@ mod get_latest_version_tag_tests {
     #[test]
     fn repository_does_not_have_version_tags() {
         // Given
-        let (_temp_dir, mut repository) = repo_init();
-        repository = add_commit(repository, ":tada: initial release".to_string());
-        let commit = find_commit_by_message(&repository, ":tada: initial release");
-        add_tag(&repository, commit.unwrap(), "tag_1");
+        let (_temp_dir, repository) = repo_init(Some(vec![":tada: initial release"]));
+        let commit = repository.find_commit_by_message(":tada: initial release");
+        repository.add_tag(commit.unwrap(), "tag_1");
 
         // When
         let result = get_latest_version_tag(&repository).unwrap();
@@ -443,11 +443,11 @@ mod get_latest_version_tag_tests {
 
     #[test]
     fn repository_has_one_annotated_version_tag() {
-        let (_temp_dir, mut repository) = repo_init();
+        // Given
         let commit_message = ":tada: initial release";
-        repository = add_commit(repository, commit_message.to_string());
-        let commit = find_commit_by_message(&repository, commit_message);
-        add_tag(&repository, commit.unwrap(), "v1.0.0");
+        let (_temp_dir, repository) = repo_init(Some(vec![commit_message]));
+        let commit = repository.find_commit_by_message(commit_message);
+        repository.add_tag(commit.unwrap(), "v1.0.0");
 
         // When
         let result = get_latest_version_tag(&repository).unwrap().unwrap();
@@ -456,7 +456,8 @@ mod get_latest_version_tag_tests {
         assert_eq!(result.version, Version::parse("1.0.0").unwrap());
         assert_eq!(
             result.commit_oid,
-            find_commit_by_message(&repository, commit_message)
+            repository
+                .find_commit_by_message(commit_message)
                 .unwrap()
                 .id(),
             "Object IDs don't match"
@@ -465,10 +466,10 @@ mod get_latest_version_tag_tests {
 
     #[test]
     fn repository_has_one_not_annotated_version_tag() {
-        let (_temp_dir, mut repository) = repo_init();
+        // Given
         let commit_message = ":tada: initial release";
-        repository = add_commit(repository, commit_message.to_string());
-        let commit = find_commit_by_message(&repository, commit_message).unwrap();
+        let (_temp_dir, repository) = repo_init(Some(vec![commit_message]));
+        let commit = repository.find_commit_by_message(commit_message).unwrap();
         repository
             .tag_lightweight("v1.0.0", commit.as_object(), false)
             .unwrap();
@@ -480,7 +481,8 @@ mod get_latest_version_tag_tests {
         assert_eq!(result.version, Version::parse("1.0.0").unwrap());
         assert_eq!(
             result.commit_oid,
-            find_commit_by_message(&repository, commit_message)
+            repository
+                .find_commit_by_message(commit_message)
                 .unwrap()
                 .id(),
             "Object IDs don't match"
@@ -490,21 +492,18 @@ mod get_latest_version_tag_tests {
     #[test]
     fn repository_have_multiple_version_tags() {
         // Given
-        let (_temp_dir, mut repository) = repo_init();
         let commit_messages = vec![
             ":tada: initial release",
             ":sparkles: new feature",
             ":boom: everything is broken",
         ];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
         let tags = vec!["v1.0.0", "v1.1.0", "v2.0.0"];
-        for commit_message in &commit_messages {
-            repository = add_commit(repository, commit_message.to_string());
-        }
         commit_messages
             .iter()
-            .map(|commit| find_commit_by_message(&repository, commit).unwrap())
+            .map(|commit| repository.find_commit_by_message(commit).unwrap())
             .zip(tags)
-            .for_each(|(commit_id, tag)| add_tag(&repository, commit_id, &tag));
+            .for_each(|(commit_id, tag)| repository.add_tag(commit_id, &tag));
 
         // When
         let result = get_latest_version_tag(&repository).unwrap().unwrap();
@@ -513,7 +512,8 @@ mod get_latest_version_tag_tests {
         assert_eq!(result.version, Version::parse("2.0.0").unwrap());
         assert_eq!(
             result.commit_oid,
-            find_commit_by_message(&repository, commit_messages.last().unwrap())
+            repository
+                .find_commit_by_message(commit_messages.last().unwrap())
                 .unwrap()
                 .id(),
             "Object IDs don't match"
@@ -523,9 +523,10 @@ mod get_latest_version_tag_tests {
 
 #[cfg(test)]
 mod get_commits_functionality {
-    use crate::test_util::{add_commit, add_tag, find_commit_by_message, repo_init};
-    use crate::{fetch_commits_since_last_version, ConventionalCommit};
+    use crate::test_util::repo_init;
+    use crate::{fetch_commits_since_last_version, test_util, ConventionalCommit};
     use std::collections::HashSet;
+    pub use test_util::RepositoryTestExtensions;
 
     #[doc(hidden)]
     /// Compare the result of `get_commits` function with the expected commit messages.
@@ -544,30 +545,30 @@ mod get_commits_functionality {
     #[test]
     fn getting_commits_from_repo_with_one_commit_without_tags() {
         // Given
-        let (_temp_dir, repository) = repo_init();
-        let repository = add_commit(repository, "initial_commit".to_string());
+        let commit_messages = vec!["initial commit"];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
+
         // When
         let result = fetch_commits_since_last_version(&repository).unwrap();
+
         // Then
-        let expected_commit_messages = vec!["initial_commit"];
         assert!(
-            compare(&result, &expected_commit_messages),
-            "result = {:?}\nexpected result = {:?}",
+            compare(&result, &commit_messages),
+            "result = {:?}\nexpected messages = {:?}",
             result,
-            expected_commit_messages
+            commit_messages
         )
     }
 
     #[test]
     fn getting_commits_from_repo_with_multiple_commits_without_tags() {
         // Given
-        let (_temp_dir, mut repository) = repo_init();
         let commit_messages = vec!["commit 1", "commit 2", "commit 3"];
-        for commit_message in &commit_messages {
-            repository = add_commit(repository, commit_message.to_string());
-        }
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
+
         // When
         let result = fetch_commits_since_last_version(&repository).unwrap();
+
         // Then
         assert!(
             compare(&result, &commit_messages),
@@ -580,9 +581,11 @@ mod get_commits_functionality {
     #[test]
     fn getting_commits_from_empty_repo() {
         // Given
-        let (_temp_dir, repository) = repo_init();
+        let (_temp_dir, repository) = repo_init(None);
+
         // When
         let result = fetch_commits_since_last_version(&repository);
+
         // Then
         assert!(result.is_err(), "Expected and error, but got Ok")
     }
@@ -590,7 +593,6 @@ mod get_commits_functionality {
     #[test]
     fn getting_commits_until_the_last_version_tag() {
         // Given
-        let (_temp_dir, mut repository) = repo_init();
         let commit_messages = vec![
             ":tada: initial release",
             ":sparkles: new feature",
@@ -599,23 +601,23 @@ mod get_commits_functionality {
             ":recycle: refactor the code base",
             ":rocket: to the moon",
         ];
-        for commit_message in &commit_messages {
-            let message = *commit_message;
-            repository = add_commit(repository, message.to_string());
-        }
-        add_tag(
-            &repository,
-            find_commit_by_message(&repository, commit_messages[0]).unwrap(),
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
+        repository.add_tag(
+            repository
+                .find_commit_by_message(commit_messages[0])
+                .unwrap(),
             "v1.0.0",
         );
-        add_tag(
-            &repository,
-            find_commit_by_message(&repository, commit_messages[1]).unwrap(),
+        repository.add_tag(
+            repository
+                .find_commit_by_message(commit_messages[1])
+                .unwrap(),
             "v1.1.0",
         );
-        add_tag(
-            &repository,
-            find_commit_by_message(&repository, commit_messages[2]).unwrap(),
+        repository.add_tag(
+            repository
+                .find_commit_by_message(commit_messages[2])
+                .unwrap(),
             "v2.0.0",
         );
 
@@ -634,7 +636,6 @@ mod get_commits_functionality {
     #[test]
     fn getting_commits_with_lightweight_tag() {
         // Given
-        let (_temp_dir, mut repository) = repo_init();
         let commit_messages = vec![
             ":tada: initial release",
             ":sparkles: new feature",
@@ -643,14 +644,12 @@ mod get_commits_functionality {
             ":recycle: refactor the code base",
             ":rocket: to the moon",
         ];
-        for commit_message in &commit_messages {
-            let message = *commit_message;
-            repository = add_commit(repository, message.to_string());
-        }
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
         let _ = repository
             .tag_lightweight(
                 "v1.0.0",
-                find_commit_by_message(&repository, commit_messages[2])
+                repository
+                    .find_commit_by_message(commit_messages[2])
                     .unwrap()
                     .as_object(),
                 false,
@@ -672,14 +671,23 @@ mod get_commits_functionality {
 
 #[cfg(test)]
 mod changes_struct {
-    use crate::test_util::{add_commit, repo_init};
+    use crate::test_util::repo_init;
     use crate::Changes;
     use crate::ConventionalCommit;
+
+    fn convert(messages: Vec<&str>) -> Vec<ConventionalCommit> {
+        messages
+            .iter()
+            .map(|commit_message| ConventionalCommit {
+                message: commit_message.to_string(),
+            })
+            .collect()
+    }
 
     #[test]
     fn creating_from_empty_commit_list() {
         // Given
-        let (_temp_dir, repository) = repo_init();
+        let (_temp_dir, repository) = repo_init(None);
 
         // When
         let result = Changes::from_repo(&repository);
@@ -697,20 +705,15 @@ mod changes_struct {
     #[test]
     fn creating_from_only_major_conventional_commits() {
         // Given
-        let commits = vec![ConventionalCommit {
-            message: "💥 introduce breaking changes".to_string(),
-        }];
-        let (_temp_dir, mut repository) = repo_init();
-        for commit in &commits {
-            repository = add_commit(repository, commit.message.to_string());
-        }
+        let commit_messages = vec!["💥 introduce breaking changes"];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
 
         // When
         let result = Changes::from_repo(&repository);
 
         // Then
         let expected_result = Changes {
-            major: commits,
+            major: convert(commit_messages),
             minor: Vec::new(),
             patch: Vec::new(),
             other: Vec::new(),
@@ -721,40 +724,18 @@ mod changes_struct {
     #[test]
     fn creating_from_only_minor_conventional_commits() {
         // Given
-        let commits = vec![
-            ConventionalCommit {
-                message: ":sparkles: introduce new feature".to_string(),
-            },
-            ConventionalCommit {
-                message: ":children_crossing: improve user experience / usability".to_string(),
-            },
-            ConventionalCommit {
-                message: "💄 add or update the UI and style files".to_string(),
-            },
-            ConventionalCommit {
-                message: ":iphone: work on responsive design".to_string(),
-            },
-            ConventionalCommit {
-                message: ":egg: add or update an easter egg".to_string(),
-            },
-            ConventionalCommit {
-                message: ":chart_with_upwards_trend: add or update analytics or track code"
-                    .to_string(),
-            },
-            ConventionalCommit {
-                message: ":heavy_plus_sign: add a dependency".to_string(),
-            },
-            ConventionalCommit {
-                message: ":heavy_minus_sign: remove a dependency".to_string(),
-            },
-            ConventionalCommit {
-                message: ":passport_control: work on code related to authorization, roles and permissions".to_string(),
-            },
+        let commit_messages = vec![
+            ":sparkles: introduce new feature",
+            ":children_crossing: improve user experience / usability",
+            "💄 add or update the UI and style files",
+            ":iphone: work on responsive design",
+            ":egg: add or update an easter egg",
+            ":chart_with_upwards_trend: add or update analytics or track code",
+            ":heavy_plus_sign: add a dependency",
+            ":heavy_minus_sign: remove a dependency",
+            ":passport_control: work on code related to authorization, roles and permissions",
         ];
-        let (_temp_dir, mut repository) = repo_init();
-        for commit in &commits {
-            repository = add_commit(repository, commit.message.to_string());
-        }
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
 
         // When
         let result = Changes::from_repo(&repository);
@@ -762,7 +743,7 @@ mod changes_struct {
         // Then
         let expected_result = Changes {
             major: Vec::new(),
-            minor: commits,
+            minor: convert(commit_messages),
             patch: Vec::new(),
             other: Vec::new(),
         };
@@ -775,140 +756,51 @@ mod changes_struct {
     #[test]
     fn creating_from_only_patch_conventional_commits() {
         // Given
-        let commits = vec![
-            ConventionalCommit {
-                message: ":art: improve structure / format of the code".to_string(),
-            },
-            ConventionalCommit {
-                message: ":ambulance: critical hotfix".to_string(),
-            },
-            ConventionalCommit {
-                message: ":lock: fix security or privacy issues".to_string(),
-            },
-            ConventionalCommit {
-                message: "🐛 fix a bug".to_string(),
-            },
-            ConventionalCommit {
-                message: ":zap: improve performance".to_string(),
-            },
-            ConventionalCommit {
-                message: ":goal_net: catch errors".to_string(),
-            },
-            ConventionalCommit {
-                message: ":alien: update code due to external API changes".to_string(),
-            },
-            ConventionalCommit {
-                message: ":wheelchair: improve accessibility".to_string(),
-            },
-            ConventionalCommit {
-                message: ":speech_balloon: add or update text and literals".to_string(),
-            },
-            ConventionalCommit {
-                message: ":mag: improve SEO".to_string(),
-            },
-            ConventionalCommit {
-                message: ":fire: remove code or files".to_string(),
-            },
-            ConventionalCommit {
-                message: ":white_check_mark: add, update, or pass tests".to_string(),
-            },
-            ConventionalCommit {
-                message: ":closed_lock_with_key: add or update secrets".to_string(),
-            },
-            ConventionalCommit {
-                message: ":rotating_light: fix compiler / linter warnings".to_string(),
-            },
-            ConventionalCommit {
-                message: ":green_heart: fix CI build".to_string(),
-            },
-            ConventionalCommit {
-                message: ":arrow_down: downgrade dependencies".to_string(),
-            },
-            ConventionalCommit {
-                message: ":arrow_up: upgrade dependencies".to_string(),
-            },
-            ConventionalCommit {
-                message: ":pushpin: pin dependencies to specific versions".to_string(),
-            },
-            ConventionalCommit {
-                message: ":construction_worker: add or update CI build system".to_string(),
-            },
-            ConventionalCommit {
-                message: ":recycle: refactor code".to_string(),
-            },
-            ConventionalCommit {
-                message: ":wrench: add or update configuration files".to_string(),
-            },
-            ConventionalCommit {
-                message: ":hammer: add or update development scripts".to_string(),
-            },
-            ConventionalCommit {
-                message: ":globe_with_meridians: internationalization and localization".to_string(),
-            },
-            ConventionalCommit {
-                message: ":package: add or update compiled files or packages".to_string(),
-            },
-            ConventionalCommit {
-                message: ":truck: move or rename resources (e.g.: files, paths, routes".to_string(),
-            },
-            ConventionalCommit {
-                message: ":bento: add or update assets".to_string(),
-            },
-            ConventionalCommit {
-                message: ":card_file_box: perform database related changes".to_string(),
-            },
-            ConventionalCommit {
-                message: ":loud_sound: add or update logs".to_string(),
-            },
-            ConventionalCommit {
-                message: ":mute: remove logs".to_string(),
-            },
-            ConventionalCommit {
-                message: ":building_construction: make architectural changes".to_string(),
-            },
-            ConventionalCommit {
-                message: ":camera_flash: add or update snapshots".to_string(),
-            },
-            ConventionalCommit {
-                message: ":label: add or update types".to_string(),
-            },
-            ConventionalCommit {
-                message: ":seedling: add or update seed files".to_string(),
-            },
-            ConventionalCommit {
-                message: ":triangular_flag_on_post: add, update, or remove feature flags"
-                    .to_string(),
-            },
-            ConventionalCommit {
-                message: ":dizzy: add or update animations an transitions".to_string(),
-            },
-            ConventionalCommit {
-                message: ":adhesive_bandage: simple fix for a non critical issue".to_string(),
-            },
-            ConventionalCommit {
-                message: ":monocle_face: data exploration / inspection".to_string(),
-            },
-            ConventionalCommit {
-                message: ":necktie: add or update business logic".to_string(),
-            },
-            ConventionalCommit {
-                message: ":stethoscope: add or update healthcheck".to_string(),
-            },
-            ConventionalCommit {
-                message: ":technologist: improve developer experience".to_string(),
-            },
-            ConventionalCommit {
-                message: ":thread: add or update code related to multithreading or concurrency"
-                    .to_string(),
-            },
-            ConventionalCommit {
-                message: ":safety_vest: add or update code related to validation".to_string(),
-            },
+        let commit_messages = vec![
+            ":art: improve structure / format of the code",
+            ":ambulance: critical hotfix",
+            ":lock: fix security or privacy issues",
+            "🐛 fix a bug",
+            ":zap: improve performance",
+            ":goal_net: catch errors",
+            ":alien: update code due to external API changes",
+            ":wheelchair: improve accessibility",
+            ":speech_balloon: add or update text and literals",
+            ":mag: improve SEO",
+            ":fire: remove code or files",
+            ":white_check_mark: add, update, or pass tests",
+            ":closed_lock_with_key: add or update secrets",
+            ":rotating_light: fix compiler / linter warnings",
+            ":green_heart: fix CI build",
+            ":arrow_down: downgrade dependencies",
+            ":arrow_up: upgrade dependencies",
+            ":pushpin: pin dependencies to specific versions",
+            ":construction_worker: add or update CI build system",
+            ":recycle: refactor code",
+            ":wrench: add or update configuration files",
+            ":hammer: add or update development scripts",
+            ":globe_with_meridians: internationalization and localization",
+            ":package: add or update compiled files or packages",
+            ":truck: move or rename resources (e.g.: files, paths, routes",
+            ":bento: add or update assets",
+            ":card_file_box: perform database related changes",
+            ":loud_sound: add or update logs",
+            ":mute: remove logs",
+            ":building_construction: make architectural changes",
+            ":camera_flash: add or update snapshots",
+            ":label: add or update types",
+            ":seedling: add or update seed files",
+            ":triangular_flag_on_post: add, update, or remove feature flags",
+            ":dizzy: add or update animations an transitions",
+            ":adhesive_bandage: simple fix for a non critical issue",
+            ":monocle_face: data exploration / inspection",
+            ":necktie: add or update business logic",
+            ":stethoscope: add or update healthcheck",
+            ":technologist: improve developer experience",
+            ":thread: add or update code related to multithreading or concurrency",
+            ":safety_vest: add or update code related to validation",
         ];
-        let (_temp_dir, mut repository) = repo_init();
-        for commit in &commits {
-            repository = add_commit(repository, commit.message.to_string());
-        }
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
 
         // When
         let result = Changes::from_repo(&repository);
@@ -917,87 +809,41 @@ mod changes_struct {
         let expected_result = Changes {
             major: Vec::new(),
             minor: Vec::new(),
-            patch: commits,
+            patch: convert(commit_messages),
             other: Vec::new(),
         };
         assert!(
             result.has_same_elements(&expected_result),
-            "Result doens't have same elements as expected"
+            "Result doesn't have same elements as expected"
         );
     }
 
     #[test]
     fn creating_from_only_other_conventional_commits() {
-        let commits = vec![
-            ConventionalCommit {
-                message: ":memo: add or update documentation".to_string(),
-            },
-            ConventionalCommit {
-                message: ":rocket: deploy stuff".to_string(),
-            },
-            ConventionalCommit {
-                message: ":tada: begin a project".to_string(),
-            },
-            ConventionalCommit {
-                message: ":bookmark: release / version tags".to_string(),
-            },
-            ConventionalCommit {
-                message: ":construction: work in progress".to_string(),
-            },
-            ConventionalCommit {
-                message: ":pencil2: fix typos".to_string(),
-            },
-            ConventionalCommit {
-                message: ":poop: write bad code that needs to be improved".to_string(),
-            },
-            ConventionalCommit {
-                message: ":rewind: revert changes".to_string(),
-            },
-            ConventionalCommit {
-                message: ":twisted_rightwards_arrows: merge branches".to_string(),
-            },
-            ConventionalCommit {
-                message: ":page_facing_up: add or update license".to_string(),
-            },
-            ConventionalCommit {
-                message: ":bulb: add or update comments in source code".to_string(),
-            },
-            ConventionalCommit {
-                message: "🍻 write code drunkenly".to_string(),
-            },
-            ConventionalCommit {
-                message: ":bust_in_silhouette: add or update contributor(s)".to_string(),
-            },
-            ConventionalCommit {
-                message: ":clown_face: mock things".to_string(),
-            },
-            ConventionalCommit {
-                message: ":see_no_evil: add or update a .gitignore file".to_string(),
-            },
-            ConventionalCommit {
-                message: ":alembic: perform experiments".to_string(),
-            },
-            ConventionalCommit {
-                message: ":wastebasket: deprecate code that needs to be cleaned up".to_string(),
-            },
-            ConventionalCommit {
-                message: ":coffin: remove dead code".to_string(),
-            },
-            ConventionalCommit {
-                message: ":test_tube: add a failing test".to_string(),
-            },
-            ConventionalCommit {
-                message: ":bricks: infrastructure related changes".to_string(),
-            },
-            ConventionalCommit {
-                message: ":money_with_wings: add sponsorship or money related infrastructure"
-                    .to_string(),
-            },
+        let commit_message = vec![
+            ":memo: add or update documentation",
+            ":rocket: deploy stuff",
+            ":tada: begin a project",
+            ":bookmark: release / version tags",
+            ":construction: work in progress",
+            ":pencil2: fix typos",
+            ":poop: write bad code that needs to be improved",
+            ":rewind: revert changes",
+            ":twisted_rightwards_arrows: merge branches",
+            ":page_facing_up: add or update license",
+            ":bulb: add or update comments in source code",
+            "🍻 write code drunkenly",
+            ":bust_in_silhouette: add or update contributor(s)",
+            ":clown_face: mock things",
+            ":see_no_evil: add or update a .gitignore file",
+            ":alembic: perform experiments",
+            ":wastebasket: deprecate code that needs to be cleaned up",
+            ":coffin: remove dead code",
+            ":test_tube: add a failing test",
+            ":bricks: infrastructure related changes",
+            ":money_with_wings: add sponsorship or money related infrastructure",
         ];
-        let (_temp_dir, mut repository) = repo_init();
-        for commit in &commits {
-            repository = add_commit(repository, commit.message.to_string());
-        }
+        let (_temp_dir, repository) = repo_init(Some(commit_message.clone()));
 
         // When
         let result = Changes::from_repo(&repository);
@@ -1007,11 +853,11 @@ mod changes_struct {
             major: Vec::new(),
             minor: Vec::new(),
             patch: Vec::new(),
-            other: commits,
+            other: convert(commit_message),
         };
         assert!(
             result.has_same_elements(&expected_result),
-            "Result doens't have same elements as expected"
+            "Result doesn't have same elements as expected"
         );
     }
 }
