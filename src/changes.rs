@@ -1,8 +1,9 @@
-use crate::commits::fetch_commits_since_last_version;
 use crate::conventional_commit::ConventionalCommit;
 use git2::Repository;
 use std::collections::HashSet;
 use std::fmt::Display;
+
+pub use crate::commit_fetcher::RepositoryFetchCommitExtension;
 
 /// Structure that represents the changes in a git repository
 #[derive(PartialEq, Debug, Hash)]
@@ -119,7 +120,7 @@ impl Changes {
             (":money_with_wings:", "💸"),
         ];
 
-        match fetch_commits_since_last_version(repository) {
+        match repository.fetch_commits_since_last_version() {
             Ok(unsorted_commits) => Self {
                 major: get_commits_with_tag(unsorted_commits.clone(), major_tags.to_vec()),
                 minor: get_commits_with_tag(unsorted_commits.clone(), minor_tags.to_vec()),

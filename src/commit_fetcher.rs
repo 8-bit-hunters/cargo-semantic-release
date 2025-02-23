@@ -4,18 +4,22 @@ use git2::Oid;
 use git2::Repository;
 use std::error::Error;
 
-/// Get the commit messages since the last version tag from a given git repository.
-///
-/// If the repository doesn't have version tags, then it will return all the commits.
-///
-/// ## Returns
-/// A vector containing the commits or an error type if an error occurs.
-pub fn fetch_commits_since_last_version(
-    repository: &Repository,
-) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
-    match repository.get_latest_version_tag()? {
-        Some(version_tag) => fetch_commits_until(repository, version_tag.commit_oid),
-        None => fetch_all_commits(repository),
+pub trait RepositoryFetchCommitExtension {
+    fn fetch_commits_since_last_version(&self) -> Result<Vec<ConventionalCommit>, Box<dyn Error>>;
+}
+
+impl RepositoryFetchCommitExtension for Repository {
+    /// Get the commit messages since the last version tag from a given git repository.
+    ///
+    /// If the repository doesn't have version tags, then it will return all the commits.
+    ///
+    /// ## Returns
+    /// A vector containing the commits or an error type if an error occurs.
+    fn fetch_commits_since_last_version(&self) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+        match self.get_latest_version_tag()? {
+            Some(version_tag) => fetch_commits_until(self, version_tag.commit_oid),
+            None => fetch_all_commits(self),
+        }
     }
 }
 
@@ -47,7 +51,7 @@ fn general_fetch_commits_until(
 
 #[cfg(test)]
 mod get_commits_functionality {
-    use crate::commits::fetch_commits_since_last_version;
+    pub use crate::commit_fetcher::RepositoryFetchCommitExtension;
     use crate::conventional_commit::ConventionalCommit;
     use crate::test_util::repo_init;
     pub use crate::test_util::RepositoryTestExtensions;
@@ -74,7 +78,7 @@ mod get_commits_functionality {
         let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
 
         // When
-        let result = fetch_commits_since_last_version(&repository).unwrap();
+        let result = repository.fetch_commits_since_last_version().unwrap();
 
         // Then
         assert!(
@@ -92,7 +96,7 @@ mod get_commits_functionality {
         let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
 
         // When
-        let result = fetch_commits_since_last_version(&repository).unwrap();
+        let result = repository.fetch_commits_since_last_version().unwrap();
 
         // Then
         assert!(
@@ -109,7 +113,7 @@ mod get_commits_functionality {
         let (_temp_dir, repository) = repo_init(None);
 
         // When
-        let result = fetch_commits_since_last_version(&repository);
+        let result = repository.fetch_commits_since_last_version();
 
         // Then
         assert!(result.is_err(), "Expected and error, but got Ok")
@@ -147,7 +151,7 @@ mod get_commits_functionality {
         );
 
         // Then
-        let result = fetch_commits_since_last_version(&repository).unwrap();
+        let result = repository.fetch_commits_since_last_version().unwrap();
 
         let expected_commits = &commit_messages[3..];
         assert!(
@@ -182,7 +186,7 @@ mod get_commits_functionality {
             .unwrap();
 
         // Then
-        let result = fetch_commits_since_last_version(&repository).unwrap();
+        let result = repository.fetch_commits_since_last_version().unwrap();
 
         let expected_commits = &commit_messages[3..];
         assert!(
