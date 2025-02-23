@@ -1,4 +1,4 @@
-use git2::{ObjectType, Oid, Reference, Repository, Tag};
+use git2::{Object, ObjectType, Oid, Reference, Repository, Tag};
 use regex::Regex;
 use semver::Version;
 use std::error::Error;
@@ -12,29 +12,47 @@ impl RepositoryVersionTagExtension for Repository {
     /// ## Returns
     /// [`VersionTag`] containing the latest version tag.
     fn get_latest_version_tag(&self) -> Result<Option<VersionTag>, Box<dyn Error>> {
-        let mut version_tags: Vec<VersionTag> = Vec::new();
+        let references: Vec<Reference> = self
+            .references()?
+            .filter_map(|reference| reference.ok())
+            .collect();
 
-        let references = self.references()?;
-        for reference in references {
-            let reference = reference?;
-            if reference.is_tag() {
-                if let Some(oid) = reference.target() {
-                    let object = self.find_object(oid, None)?;
-
-                    if let Ok(tag_object) = object.peel(ObjectType::Tag) {
-                        if let Some(tag) = tag_object.as_tag() {
-                            if let Some(version_tag) = VersionTag::from_annotated_tag(tag) {
-                                version_tags.push(version_tag);
-                            }
-                        }
-                    } else if let Some(version_tag) = VersionTag::from_lightweight_tag(reference) {
-                        version_tags.push(version_tag);
-                    }
-                }
-            }
-        }
+        let version_tags: Vec<VersionTag> = references
+            .iter()
+            .filter(|reference| reference.is_tag())
+            .filter_map(|reference| {
+                reference.target().and_then(|oid| {
+                    self.find_object(oid, None)
+                        .ok()
+                        .map(|object| (reference, object))
+                })
+            })
+            .filter_map(|(reference, object)| {
+                Tag::from_object(object)
+                    .and_then(|tag| VersionTag::from_annotated_tag(&tag))
+                    .or_else(|| VersionTag::from_lightweight_tag(reference))
+            })
+            .collect();
 
         Ok(version_tags.iter().max().cloned())
+    }
+}
+
+trait AnnotatedTag {
+    fn from_object(object: Object) -> Option<Tag>;
+}
+
+impl AnnotatedTag for Tag<'_> {
+    /// Create [`Tag`] from [`Object`] type.
+    ///
+    /// ## Returns
+    ///
+    /// [`Tag`] if the object is annotated tag, `None` otherwise.
+    fn from_object(object: Object<'_>) -> Option<Tag<'_>> {
+        object
+            .peel(ObjectType::Tag)
+            .ok()
+            .and_then(|tag_object| tag_object.as_tag().cloned())
     }
 }
 
@@ -70,7 +88,7 @@ impl VersionTag {
     /// ## Returns
     ///
     /// `Option` which is `Some` if the version tag is valid, `None` otherwise.
-    fn from_lightweight_tag(reference: Reference) -> Option<Self> {
+    fn from_lightweight_tag(reference: &Reference) -> Option<Self> {
         let tag_name = reference.shorthand().unwrap();
         if !Self::is_valid_version_tag(tag_name) {
             return None;
