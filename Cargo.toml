@@ -12,6 +12,7 @@ homepage = "https://8-bit-hunters.github.io/cargo-semantic-release/"
 git2 = "0.20.0"
 semver = "1.0.25"
 tempfile = "3.16.0"
+regex = "1.11.1"
 
 [workspace.metadata.spellcheck]
 config = "spellcheck.toml"
