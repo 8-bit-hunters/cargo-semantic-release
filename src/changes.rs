@@ -200,6 +200,22 @@ impl PartialEq for Changes {
 }
 
 impl Display for Changes {
+    /// Format the values in [`Changes`]
+    ///
+    /// Example output:
+    /// ```shell
+    ///major:
+    ///         :boom: Introduce breaking change
+    ///
+    /// minor:
+    ///         :sparkles: Add new feature
+    ///
+    /// patch:
+    ///         :recycle: Refactor codebase
+    ///
+    /// other:
+    ///         :bulb: Add comments
+    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let major_changes = convert_to_string_vector(self.major.clone());
         let minor_changes = convert_to_string_vector(self.minor.clone());
