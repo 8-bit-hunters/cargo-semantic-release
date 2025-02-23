@@ -122,7 +122,7 @@ impl Changes {
             (":money_with_wings:", "💸"),
         ];
 
-        match get_commits_since_last_version(repository) {
+        match fetch_commits_since_last_version(repository) {
             Ok(unsorted_commits) => Self {
                 major: get_commits_with_tag(unsorted_commits.clone(), major_tags.to_vec()),
                 minor: get_commits_with_tag(unsorted_commits.clone(), minor_tags.to_vec()),
@@ -294,7 +294,7 @@ fn get_commits_with_tag(
 ///
 /// ## Returns
 /// A vector containing the commits or an error type if an error occurs.
-fn get_commits_since_last_version(
+fn fetch_commits_since_last_version(
     repository: &Repository,
 ) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
     match get_latest_version_tag(repository)? {
@@ -305,26 +305,26 @@ fn get_commits_since_last_version(
 
 fn fetch_commits_until(
     repository: &Repository,
-    stop_iod: Oid,
+    stop_oid: Oid,
+) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+    general_fetch_commits_until(repository, Some(stop_oid))
+}
+
+fn fetch_all_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+    general_fetch_commits_until(repository, None)
+}
+
+fn general_fetch_commits_until(
+    repository: &Repository,
+    stop_oid: Option<Oid>,
 ) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
     let mut revwalk = repository.revwalk()?;
     revwalk.push_head()?;
 
     Ok(revwalk
         .filter_map(|object_id| object_id.ok())
-        .take_while(|oid| *oid != stop_iod)
+        .take_while(|oid| Some(*oid) != stop_oid)
         .filter_map(|oid| repository.find_commit(oid).ok())
-        .map(|commit| ConventionalCommit::from_git2_commit(commit))
-        .collect())
-}
-
-fn fetch_all_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
-    let mut revwalk = repository.revwalk()?;
-    revwalk.push_head()?;
-
-    Ok(revwalk
-        .filter_map(|object_id| object_id.ok())
-        .filter_map(|valid_oid| repository.find_commit(valid_oid).ok())
         .map(|commit| ConventionalCommit::from_git2_commit(commit))
         .collect())
 }
@@ -524,7 +524,7 @@ mod get_latest_version_tag_tests {
 #[cfg(test)]
 mod get_commits_functionality {
     use crate::test_util::{add_commit, add_tag, find_commit_by_message, repo_init};
-    use crate::{get_commits_since_last_version, ConventionalCommit};
+    use crate::{fetch_commits_since_last_version, ConventionalCommit};
     use std::collections::HashSet;
 
     #[doc(hidden)]
@@ -547,7 +547,7 @@ mod get_commits_functionality {
         let (_temp_dir, repository) = repo_init();
         let repository = add_commit(repository, "initial_commit".to_string());
         // When
-        let result = get_commits_since_last_version(&repository).unwrap();
+        let result = fetch_commits_since_last_version(&repository).unwrap();
         // Then
         let expected_commit_messages = vec!["initial_commit"];
         assert!(
@@ -567,7 +567,7 @@ mod get_commits_functionality {
             repository = add_commit(repository, commit_message.to_string());
         }
         // When
-        let result = get_commits_since_last_version(&repository).unwrap();
+        let result = fetch_commits_since_last_version(&repository).unwrap();
         // Then
         assert!(
             compare(&result, &commit_messages),
@@ -582,7 +582,7 @@ mod get_commits_functionality {
         // Given
         let (_temp_dir, repository) = repo_init();
         // When
-        let result = get_commits_since_last_version(&repository);
+        let result = fetch_commits_since_last_version(&repository);
         // Then
         assert!(result.is_err(), "Expected and error, but got Ok")
     }
@@ -620,7 +620,7 @@ mod get_commits_functionality {
         );
 
         // Then
-        let result = get_commits_since_last_version(&repository).unwrap();
+        let result = fetch_commits_since_last_version(&repository).unwrap();
 
         let expected_commits = &commit_messages[3..];
         assert!(
@@ -658,7 +658,7 @@ mod get_commits_functionality {
             .unwrap();
 
         // Then
-        let result = get_commits_since_last_version(&repository).unwrap();
+        let result = fetch_commits_since_last_version(&repository).unwrap();
 
         let expected_commits = &commit_messages[3..];
         assert!(
