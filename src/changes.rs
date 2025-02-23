@@ -6,7 +6,7 @@ use std::fmt::Display;
 pub use crate::commit_fetcher::RepositoryFetchCommitExtension;
 
 /// Structure that represents the changes in a git repository
-#[derive(PartialEq, Debug, Hash)]
+#[derive(Debug)]
 pub struct Changes {
     /// Vector of commits with major changes
     major: Vec<ConventionalCommit>,
@@ -165,7 +165,9 @@ impl Changes {
         }
         SemanticVersionAction::Keep
     }
+}
 
+impl PartialEq for Changes {
     /// Compare two [`Changes`] struct to see if they have the same elements.
     ///
     /// # Returns
@@ -175,6 +177,7 @@ impl Changes {
     /// # Example
     ///
     /// ```
+    /// use git2::AttrValue::True;
     /// use git2::Repository;
     /// use cargo_semantic_release::Changes;
     ///
@@ -183,10 +186,9 @@ impl Changes {
     /// let changes_1 = Changes::from_repo(&git_repo);
     /// let changes_2 = Changes::from_repo(&git_repo);
     ///
-    /// let result = changes_1.has_same_elements(&changes_2);
-    /// println!("{result}")
+    /// assert_eq!(changes_1, changes_2);
     /// ```
-    pub fn has_same_elements(&self, other: &Self) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.major.iter().collect::<HashSet<_>>() == other.major.iter().collect::<HashSet<_>>()
             && self.minor.iter().collect::<HashSet<_>>()
                 == other.minor.iter().collect::<HashSet<_>>()
@@ -198,6 +200,22 @@ impl Changes {
 }
 
 impl Display for Changes {
+    /// Format the values in [`Changes`]
+    ///
+    /// Example output:
+    /// ```shell
+    ///major:
+    ///         :boom: Introduce breaking change
+    ///
+    /// minor:
+    ///         :sparkles: Add new feature
+    ///
+    /// patch:
+    ///         :recycle: Refactor codebase
+    ///
+    /// other:
+    ///         :bulb: Add comments
+    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let major_changes = convert_to_string_vector(self.major.clone());
         let minor_changes = convert_to_string_vector(self.minor.clone());
@@ -333,10 +351,7 @@ mod changes_struct {
             patch: Vec::new(),
             other: Vec::new(),
         };
-        assert!(
-            result.has_same_elements(&expected_result),
-            "Result doens't have same elements as expected"
-        );
+        assert_eq!(result, expected_result);
     }
 
     #[test]
@@ -398,10 +413,7 @@ mod changes_struct {
             patch: convert(commit_messages),
             other: Vec::new(),
         };
-        assert!(
-            result.has_same_elements(&expected_result),
-            "Result doesn't have same elements as expected"
-        );
+        assert_eq!(result, expected_result);
     }
 
     #[test]
@@ -441,10 +453,7 @@ mod changes_struct {
             patch: Vec::new(),
             other: convert(commit_message),
         };
-        assert!(
-            result.has_same_elements(&expected_result),
-            "Result doesn't have same elements as expected"
-        );
+        assert_eq!(result, expected_result);
     }
 }
 
