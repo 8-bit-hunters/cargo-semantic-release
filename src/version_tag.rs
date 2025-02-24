@@ -107,7 +107,7 @@ impl VersionTag {
 }
 
 #[cfg(test)]
-mod get_latest_version_tag_tests {
+mod version_tag_tests {
     use crate::test_util::repo_init;
     pub use crate::test_util::RepositoryTestExtensions;
     pub use crate::version_tag::RepositoryVersionTagExtension;
