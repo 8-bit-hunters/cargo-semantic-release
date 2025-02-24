@@ -458,7 +458,7 @@ mod changes_struct {
 }
 
 #[cfg(test)]
-mod evaluate_changes {
+mod evaluate_changes_tests {
     use crate::changes::{Changes, SemanticVersionAction};
     use crate::conventional_commit::ConventionalCommit;
 
