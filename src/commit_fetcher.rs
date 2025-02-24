@@ -50,7 +50,7 @@ fn general_fetch_commits_until(
 }
 
 #[cfg(test)]
-mod get_commits_functionality {
+mod commit_fetcher_tests {
     pub use crate::commit_fetcher::RepositoryFetchCommitExtension;
     use crate::conventional_commit::ConventionalCommit;
     use crate::test_util::repo_init;

@@ -1,5 +1,4 @@
 use crate::conventional_commit::ConventionalCommit;
-use git2::Repository;
 use std::collections::HashSet;
 use std::fmt::Display;
 
@@ -20,7 +19,7 @@ pub struct Changes {
 
 impl Changes {
     /// Sort the commits from a given repo into `major`, `minor`, `patch` and `other`
-    /// change categories according to their commit flags.
+    /// change categories according to their commit intentions.
     ///
     /// Commits are fetched since the latest version tag. If there are no version tags yet
     /// then all the commits from the repository are fetched.
@@ -39,9 +38,9 @@ impl Changes {
     /// let changes = Changes::from_repo(&git_repo);
     /// println!("changes: {changes}")
     /// ```
-    pub fn from_repo(repository: &Repository) -> Self {
-        let major_tags = [(":boom:", "💥")];
-        let minor_tags = [
+    pub fn from_repo(repository: &impl RepositoryFetchCommitExtension) -> Self {
+        let major_intentions = [(":boom:", "💥")];
+        let minor_intentions = [
             (":sparkles:", "✨"),
             (":children_crossing:", "🚸"),
             (":lipstick:", "💄"),
@@ -52,7 +51,7 @@ impl Changes {
             (":heavy_minus_sign:", "➖"),
             (":passport_control:", "🛂"),
         ];
-        let patch_tags = [
+        let patch_intentions = [
             (":art:", "🎨"),
             (":ambulance:", "🚑️"),
             (":lock:", "🔒️"),
@@ -96,7 +95,7 @@ impl Changes {
             (":thread:", "🧵"),
             (":safety_vest:", "🦺"),
         ];
-        let other_tags = [
+        let other_intentions = [
             (":memo:", "📝"),
             (":rocket:", "🚀"),
             (":tada:", "🎉"),
@@ -122,10 +121,19 @@ impl Changes {
 
         match repository.fetch_commits_since_last_version() {
             Ok(unsorted_commits) => Self {
-                major: get_commits_with_tag(unsorted_commits.clone(), major_tags.to_vec()),
-                minor: get_commits_with_tag(unsorted_commits.clone(), minor_tags.to_vec()),
-                patch: get_commits_with_tag(unsorted_commits.clone(), patch_tags.to_vec()),
-                other: get_commits_with_tag(unsorted_commits, other_tags.to_vec()),
+                major: get_commits_with_intention(
+                    unsorted_commits.clone(),
+                    major_intentions.to_vec(),
+                ),
+                minor: get_commits_with_intention(
+                    unsorted_commits.clone(),
+                    minor_intentions.to_vec(),
+                ),
+                patch: get_commits_with_intention(
+                    unsorted_commits.clone(),
+                    patch_intentions.to_vec(),
+                ),
+                other: get_commits_with_intention(unsorted_commits, other_intentions.to_vec()),
             },
             Err(_) => Self {
                 major: Vec::new(),
@@ -260,24 +268,26 @@ fn convert_to_string_vector(commits: Vec<ConventionalCommit>) -> Vec<String> {
         .collect::<Vec<String>>()
 }
 
-fn get_commits_with_tag(
+fn get_commits_with_intention(
     commits: Vec<ConventionalCommit>,
-    tags: Vec<(&str, &str)>,
+    intentions: Vec<(&str, &str)>,
 ) -> Vec<ConventionalCommit> {
     commits
         .into_iter()
         .filter(|commit| {
-            tags.iter()
-                .any(|tag| commit.message.contains(tag.0) || commit.message.contains(tag.1))
+            intentions.iter().any(|intention| {
+                commit.message.contains(intention.0) || commit.message.contains(intention.1)
+            })
         })
         .collect()
 }
 
 #[cfg(test)]
-mod changes_struct {
-    use crate::changes::Changes;
+mod changes_tests {
+    use crate::changes::{Changes, RepositoryFetchCommitExtension};
     use crate::conventional_commit::ConventionalCommit;
-    use crate::test_util::repo_init;
+    use crate::test_util::MockError;
+    use std::error::Error;
 
     fn convert(messages: Vec<&str>) -> Vec<ConventionalCommit> {
         messages
@@ -288,10 +298,61 @@ mod changes_struct {
             .collect()
     }
 
+    struct MockedRepository {
+        commits: Vec<ConventionalCommit>,
+        commit_fetching_fails: bool,
+    }
+
+    impl RepositoryFetchCommitExtension for MockedRepository {
+        fn fetch_commits_since_last_version(
+            &self,
+        ) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+            if self.commit_fetching_fails {
+                return Err(Box::new(MockError));
+            }
+            Ok(self.commits.clone())
+        }
+    }
+
+    impl MockedRepository {
+        fn from_commits(commits: Vec<&str>) -> Self {
+            Self {
+                commits: convert(commits),
+                commit_fetching_fails: false,
+            }
+        }
+
+        fn new() -> Self {
+            Self {
+                commits: Vec::new(),
+                commit_fetching_fails: false,
+            }
+        }
+    }
+
     #[test]
     fn creating_from_empty_commit_list() {
         // Given
-        let (_temp_dir, repository) = repo_init(None);
+        let repository = MockedRepository::new();
+
+        // When
+        let result = Changes::from_repo(&repository);
+
+        // Then
+        let expected_result = Changes {
+            major: Vec::new(),
+            minor: Vec::new(),
+            patch: Vec::new(),
+            other: Vec::new(),
+        };
+        assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn error_during_fetching_commits() {
+        // Given
+        let mut repository = MockedRepository::new();
+        repository.commit_fetching_fails = true;
 
         // When
         let result = Changes::from_repo(&repository);
@@ -310,7 +371,7 @@ mod changes_struct {
     fn creating_from_only_major_conventional_commits() {
         // Given
         let commit_messages = vec!["💥 introduce breaking changes"];
-        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
+        let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
         let result = Changes::from_repo(&repository);
@@ -339,7 +400,7 @@ mod changes_struct {
             ":heavy_minus_sign: remove a dependency",
             ":passport_control: work on code related to authorization, roles and permissions",
         ];
-        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
+        let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
         let result = Changes::from_repo(&repository);
@@ -401,7 +462,7 @@ mod changes_struct {
             ":thread: add or update code related to multithreading or concurrency",
             ":safety_vest: add or update code related to validation",
         ];
-        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
+        let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
         let result = Changes::from_repo(&repository);
@@ -418,7 +479,7 @@ mod changes_struct {
 
     #[test]
     fn creating_from_only_other_conventional_commits() {
-        let commit_message = vec![
+        let commit_messages = vec![
             ":memo: add or update documentation",
             ":rocket: deploy stuff",
             ":tada: begin a project",
@@ -441,7 +502,7 @@ mod changes_struct {
             ":bricks: infrastructure related changes",
             ":money_with_wings: add sponsorship or money related infrastructure",
         ];
-        let (_temp_dir, repository) = repo_init(Some(commit_message.clone()));
+        let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
         let result = Changes::from_repo(&repository);
@@ -451,14 +512,14 @@ mod changes_struct {
             major: Vec::new(),
             minor: Vec::new(),
             patch: Vec::new(),
-            other: convert(commit_message),
+            other: convert(commit_messages),
         };
         assert_eq!(result, expected_result);
     }
 }
 
 #[cfg(test)]
-mod evaluate_changes {
+mod evaluate_changes_tests {
     use crate::changes::{Changes, SemanticVersionAction};
     use crate::conventional_commit::ConventionalCommit;
 

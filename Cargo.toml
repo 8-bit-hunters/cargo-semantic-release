@@ -18,3 +18,9 @@ regex = "1.11.1"
 
 [workspace.metadata.spellcheck]
 config = "spellcheck.toml"
+
+[features]
+test_util = []
+
+[dev-dependencies]
+cargo-semantic-release = { path = ".", features = ["test_util"] }
