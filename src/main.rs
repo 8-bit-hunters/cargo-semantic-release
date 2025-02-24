@@ -2,8 +2,34 @@ extern crate cargo_semantic_release;
 use cargo_semantic_release::{evaluate_changes, get_commits, Changes};
 use git2::Repository;
 use std::{env, process};
+use clap::Parser;
+use clap_cargo::style;
+
+#[derive(Parser)]
+#[command(name = "cargo")]
+#[command(bin_name = "cargo")]
+#[command(styles = CLAP_STYLING)]
+enum CargoCli {
+    SemanticRelease(SemanticReleaseArgs),
+}
+
+#[derive(clap::Args)]
+#[command(version, about, display_name = "semantic-release")]
+struct SemanticReleaseArgs {
+}
+
+pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
+    .header(style::HEADER)
+    .usage(style::USAGE)
+    .literal(style::LITERAL)
+    .placeholder(style::PLACEHOLDER)
+    .error(style::ERROR)
+    .valid(style::VALID)
+    .invalid(style::INVALID);
 
 fn main() {
+    let _ = CargoCli::parse();
+
     let path = env::current_dir().expect("Failed to get current directory");
     println!("Current directory: {}", path.display());
 
@@ -19,4 +45,5 @@ fn main() {
 
     let action = evaluate_changes(changes);
     println!("Action for semantic version ➡️ {}", action);
+
 }
