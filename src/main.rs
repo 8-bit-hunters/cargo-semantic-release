@@ -1,9 +1,9 @@
 extern crate cargo_semantic_release;
 use cargo_semantic_release::{evaluate_changes, get_commits, Changes};
-use git2::Repository;
-use std::{env, process};
 use clap::Parser;
 use clap_cargo::style;
+use git2::Repository;
+use std::{env, process};
 
 #[derive(Parser)]
 #[command(name = "cargo")]
@@ -15,8 +15,7 @@ enum CargoCli {
 
 #[derive(clap::Args)]
 #[command(version, about, display_name = "semantic-release")]
-struct SemanticReleaseArgs {
-}
+struct SemanticReleaseArgs {}
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
     .header(style::HEADER)
@@ -45,5 +44,4 @@ fn main() {
 
     let action = evaluate_changes(changes);
     println!("Action for semantic version ➡️ {}", action);
-
 }
