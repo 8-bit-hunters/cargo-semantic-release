@@ -1,5 +1,5 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::{evaluate_changes, get_commits, Changes};
+use cargo_semantic_release::Changes;
 use clap::Parser;
 use clap_cargo::style;
 use git2::Repository;
