@@ -1,4 +1,6 @@
 use git2::{Commit, Repository, RepositoryInitOptions, Revwalk, Signature};
+use std::error::Error;
+use std::fmt;
 use tempfile::TempDir;
 
 #[doc(hidden)]
@@ -78,3 +80,14 @@ impl RepositoryTestExtensions for Repository {
             .find(|commit| commit.message().unwrap().contains(commit_message))
     }
 }
+
+#[derive(Debug)]
+pub struct MockError;
+
+impl fmt::Display for MockError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Mock error")
+    }
+}
+
+impl Error for MockError {}
