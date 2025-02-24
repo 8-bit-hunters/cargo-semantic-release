@@ -19,7 +19,7 @@ pub struct Changes {
 
 impl Changes {
     /// Sort the commits from a given repo into `major`, `minor`, `patch` and `other`
-    /// change categories according to their commit flags.
+    /// change categories according to their commit intentions.
     ///
     /// Commits are fetched since the latest version tag. If there are no version tags yet
     /// then all the commits from the repository are fetched.
@@ -39,8 +39,8 @@ impl Changes {
     /// println!("changes: {changes}")
     /// ```
     pub fn from_repo(repository: &impl RepositoryFetchCommitExtension) -> Self {
-        let major_tags = [(":boom:", "💥")];
-        let minor_tags = [
+        let major_intentions = [(":boom:", "💥")];
+        let minor_intentions = [
             (":sparkles:", "✨"),
             (":children_crossing:", "🚸"),
             (":lipstick:", "💄"),
@@ -51,7 +51,7 @@ impl Changes {
             (":heavy_minus_sign:", "➖"),
             (":passport_control:", "🛂"),
         ];
-        let patch_tags = [
+        let patch_intentions = [
             (":art:", "🎨"),
             (":ambulance:", "🚑️"),
             (":lock:", "🔒️"),
@@ -95,7 +95,7 @@ impl Changes {
             (":thread:", "🧵"),
             (":safety_vest:", "🦺"),
         ];
-        let other_tags = [
+        let other_intentions = [
             (":memo:", "📝"),
             (":rocket:", "🚀"),
             (":tada:", "🎉"),
@@ -121,10 +121,19 @@ impl Changes {
 
         match repository.fetch_commits_since_last_version() {
             Ok(unsorted_commits) => Self {
-                major: get_commits_with_tag(unsorted_commits.clone(), major_tags.to_vec()),
-                minor: get_commits_with_tag(unsorted_commits.clone(), minor_tags.to_vec()),
-                patch: get_commits_with_tag(unsorted_commits.clone(), patch_tags.to_vec()),
-                other: get_commits_with_tag(unsorted_commits, other_tags.to_vec()),
+                major: get_commits_with_intention(
+                    unsorted_commits.clone(),
+                    major_intentions.to_vec(),
+                ),
+                minor: get_commits_with_intention(
+                    unsorted_commits.clone(),
+                    minor_intentions.to_vec(),
+                ),
+                patch: get_commits_with_intention(
+                    unsorted_commits.clone(),
+                    patch_intentions.to_vec(),
+                ),
+                other: get_commits_with_intention(unsorted_commits, other_intentions.to_vec()),
             },
             Err(_) => Self {
                 major: Vec::new(),
@@ -259,15 +268,16 @@ fn convert_to_string_vector(commits: Vec<ConventionalCommit>) -> Vec<String> {
         .collect::<Vec<String>>()
 }
 
-fn get_commits_with_tag(
+fn get_commits_with_intention(
     commits: Vec<ConventionalCommit>,
-    tags: Vec<(&str, &str)>,
+    intentions: Vec<(&str, &str)>,
 ) -> Vec<ConventionalCommit> {
     commits
         .into_iter()
         .filter(|commit| {
-            tags.iter()
-                .any(|tag| commit.message.contains(tag.0) || commit.message.contains(tag.1))
+            intentions.iter().any(|intention| {
+                commit.message.contains(intention.0) || commit.message.contains(intention.1)
+            })
         })
         .collect()
 }
