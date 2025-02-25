@@ -1,31 +1,18 @@
-use crate::repo::{ConventionalCommit, RepositoryExtension};
+use crate::repo::ConventionalCommit;
 use git2::Oid;
 use git2::Repository;
 use std::error::Error;
 
-/// Get the commit messages since the last version tag from a given git repository.
-///
-/// If the repository doesn't have version tags, then it will return all the commits.
-///
-/// ## Returns
-/// A vector containing the commits or an error type if an error occurs.
-pub fn fetch_commits_since_last_version(
-    repository: &Repository,
-) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
-    match repository.get_latest_version_tag()? {
-        Some(version_tag) => fetch_commits_until(repository, version_tag.commit_oid),
-        None => fetch_all_commits(repository),
-    }
-}
-
-fn fetch_commits_until(
+pub fn fetch_commits_until(
     repository: &Repository,
     stop_oid: Oid,
 ) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
     general_fetch_commits_until(repository, Some(stop_oid))
 }
 
-fn fetch_all_commits(repository: &Repository) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+pub fn fetch_all_commits(
+    repository: &Repository,
+) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
     general_fetch_commits_until(repository, None)
 }
 
@@ -56,10 +43,7 @@ mod commit_fetcher_tests {
     /// Compare the result of `get_commits` function with the expected commit messages.
     /// ## Returns
     /// `true` if the result and expected commit messages are the same, `false` otherwise.
-    pub fn compare(
-        result_of_get_commits: &[ConventionalCommit],
-        expected_commits: &[&str],
-    ) -> bool {
+    fn compare(result_of_get_commits: &[ConventionalCommit], expected_commits: &[&str]) -> bool {
         let collected_commit_messages: HashSet<_> =
             result_of_get_commits.iter().map(|c| c.message()).collect();
         let committed_messages: HashSet<_> = expected_commits.iter().copied().collect();
@@ -67,13 +51,13 @@ mod commit_fetcher_tests {
     }
 
     #[test]
-    fn getting_commits_from_repo_with_one_commit_without_tags() {
+    fn getting_commits_from_repo_with_one_commit() {
         // Given
         let commit_messages = vec!["initial commit"];
         let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
 
         // When
-        let result = repository.fetch_commits_since_last_version().unwrap();
+        let result = repository.fetch_all_commits().unwrap();
 
         // Then
         assert!(
@@ -85,13 +69,13 @@ mod commit_fetcher_tests {
     }
 
     #[test]
-    fn getting_commits_from_repo_with_multiple_commits_without_tags() {
+    fn getting_commits_from_repo_with_multiple_commits() {
         // Given
         let commit_messages = vec!["commit 1", "commit 2", "commit 3"];
         let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
 
         // When
-        let result = repository.fetch_commits_since_last_version().unwrap();
+        let result = repository.fetch_all_commits().unwrap();
 
         // Then
         assert!(
@@ -108,7 +92,7 @@ mod commit_fetcher_tests {
         let (_temp_dir, repository) = repo_init(None);
 
         // When
-        let result = repository.fetch_commits_since_last_version();
+        let result = repository.fetch_all_commits();
 
         // Then
         assert!(result.is_err(), "Expected and error, but got Ok")
@@ -126,62 +110,13 @@ mod commit_fetcher_tests {
             ":rocket: to the moon",
         ];
         let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
-        repository.add_tag(
-            repository
-                .find_commit_by_message(commit_messages[0])
-                .unwrap(),
-            "v1.0.0",
-        );
-        repository.add_tag(
-            repository
-                .find_commit_by_message(commit_messages[1])
-                .unwrap(),
-            "v1.1.0",
-        );
-        repository.add_tag(
-            repository
-                .find_commit_by_message(commit_messages[2])
-                .unwrap(),
-            "v2.0.0",
-        );
+        let version_tagged_commit =
+            repository.find_commit_by_message(":boom: everything is broken");
 
         // Then
-        let result = repository.fetch_commits_since_last_version().unwrap();
-
-        let expected_commits = &commit_messages[3..];
-        assert!(
-            compare(&result, expected_commits),
-            "result = {:?}\nexpected messages = {:?}",
-            result,
-            expected_commits
-        )
-    }
-
-    #[test]
-    fn getting_commits_with_lightweight_tag() {
-        // Given
-        let commit_messages = vec![
-            ":tada: initial release",
-            ":sparkles: new feature",
-            ":boom: everything is broken",
-            ":memo: add some documentation",
-            ":recycle: refactor the code base",
-            ":rocket: to the moon",
-        ];
-        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
-        let _ = repository
-            .tag_lightweight(
-                "v1.0.0",
-                repository
-                    .find_commit_by_message(commit_messages[2])
-                    .unwrap()
-                    .as_object(),
-                false,
-            )
+        let result = repository
+            .fetch_commits_until(version_tagged_commit.unwrap().id())
             .unwrap();
-
-        // Then
-        let result = repository.fetch_commits_since_last_version().unwrap();
 
         let expected_commits = &commit_messages[3..];
         assert!(
