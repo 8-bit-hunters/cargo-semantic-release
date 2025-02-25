@@ -1,8 +1,8 @@
-use crate::conventional_commit::ConventionalCommit;
+use crate::repo::ConventionalCommit;
 use std::collections::HashSet;
 use std::fmt::Display;
 
-pub use crate::commit_fetcher::RepositoryFetchCommitExtension;
+pub use crate::repo::RepositoryExtension;
 
 /// Structure that represents the changes in a git repository
 #[derive(Debug)]
@@ -38,7 +38,7 @@ impl Changes {
     /// let changes = Changes::from_repo(&git_repo);
     /// println!("changes: {changes}")
     /// ```
-    pub fn from_repo(repository: &impl RepositoryFetchCommitExtension) -> Self {
+    pub fn from_repo(repository: &impl RepositoryExtension) -> Self {
         let major_intentions = [(":boom:", "💥")];
         let minor_intentions = [
             (":sparkles:", "✨"),
@@ -284,8 +284,8 @@ fn get_commits_with_intention(
 
 #[cfg(test)]
 mod changes_tests {
-    use crate::changes::{Changes, RepositoryFetchCommitExtension};
-    use crate::conventional_commit::ConventionalCommit;
+    use crate::changes::{Changes, RepositoryExtension};
+    use crate::repo::ConventionalCommit;
     use crate::test_util::MockError;
     use std::error::Error;
 
@@ -303,7 +303,7 @@ mod changes_tests {
         commit_fetching_fails: bool,
     }
 
-    impl RepositoryFetchCommitExtension for MockedRepository {
+    impl RepositoryExtension for MockedRepository {
         fn fetch_commits_since_last_version(
             &self,
         ) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
@@ -311,6 +311,12 @@ mod changes_tests {
                 return Err(Box::new(MockError));
             }
             Ok(self.commits.clone())
+        }
+
+        fn get_latest_version_tag(
+            &self,
+        ) -> Result<Option<crate::repo::VersionTag>, Box<dyn Error>> {
+            Err(Box::new(MockError))
         }
     }
 
@@ -521,7 +527,7 @@ mod changes_tests {
 #[cfg(test)]
 mod evaluate_changes_tests {
     use crate::changes::{Changes, SemanticVersionAction};
-    use crate::conventional_commit::ConventionalCommit;
+    use crate::repo::ConventionalCommit;
 
     #[test]
     fn has_no_changes() {

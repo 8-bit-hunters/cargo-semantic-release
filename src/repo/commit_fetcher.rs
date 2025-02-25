@@ -1,25 +1,20 @@
-use crate::conventional_commit::ConventionalCommit;
-pub use crate::version_tag::RepositoryVersionTagExtension;
+use crate::repo::{ConventionalCommit, RepositoryExtension};
 use git2::Oid;
 use git2::Repository;
 use std::error::Error;
 
-pub trait RepositoryFetchCommitExtension {
-    fn fetch_commits_since_last_version(&self) -> Result<Vec<ConventionalCommit>, Box<dyn Error>>;
-}
-
-impl RepositoryFetchCommitExtension for Repository {
-    /// Get the commit messages since the last version tag from a given git repository.
-    ///
-    /// If the repository doesn't have version tags, then it will return all the commits.
-    ///
-    /// ## Returns
-    /// A vector containing the commits or an error type if an error occurs.
-    fn fetch_commits_since_last_version(&self) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
-        match self.get_latest_version_tag()? {
-            Some(version_tag) => fetch_commits_until(self, version_tag.commit_oid),
-            None => fetch_all_commits(self),
-        }
+/// Get the commit messages since the last version tag from a given git repository.
+///
+/// If the repository doesn't have version tags, then it will return all the commits.
+///
+/// ## Returns
+/// A vector containing the commits or an error type if an error occurs.
+pub fn fetch_commits_since_last_version(
+    repository: &Repository,
+) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+    match repository.get_latest_version_tag()? {
+        Some(version_tag) => fetch_commits_until(repository, version_tag.commit_oid),
+        None => fetch_all_commits(repository),
     }
 }
 
@@ -51,8 +46,8 @@ fn general_fetch_commits_until(
 
 #[cfg(test)]
 mod commit_fetcher_tests {
-    pub use crate::commit_fetcher::RepositoryFetchCommitExtension;
-    use crate::conventional_commit::ConventionalCommit;
+    use crate::repo::ConventionalCommit;
+    pub use crate::repo::RepositoryExtension;
     use crate::test_util::repo_init;
     pub use crate::test_util::RepositoryTestExtensions;
     use std::collections::HashSet;
