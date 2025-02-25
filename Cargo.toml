@@ -9,7 +9,7 @@ documentation = "https://docs.rs/crate/cargo-semantic-release/"
 homepage = "https://8-bit-hunters.github.io/cargo-semantic-release/"
 
 [dependencies]
-clap = { version = "4.5.30", features = ["derive", "cargo"] }
+clap = { version = "4.5.30", features = ["derive"] }
 clap-cargo = "0.15.2"
 git2 = "0.20.0"
 semver = "1.0.25"
