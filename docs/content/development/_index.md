@@ -16,7 +16,7 @@ features, documentation improvements, and discussions.
    This project uses `pre-commit` to enforce code quality checks automatically. Install and activate the hooks:
 
    ```shell
-   pip install pre-commit
+   pipx install pre-commit
    pre-commit install
    ```
 
@@ -24,7 +24,7 @@ features, documentation improvements, and discussions.
    This project uses `spellcheck`. Install the tool:
 
     ```shell
-    cargo install spellcheck
+    cargo install cargo-spellcheck
     ```
 
 4. **Build and Test**
