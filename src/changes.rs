@@ -583,7 +583,7 @@ mod changes_tests {
             version: Version::new(1, 0, 0),
             commit_oid: Oid::zero(),
         });
-        repository.commit_with_latest_tag = Some(commit_messages[1].try_into().unwrap());
+        repository.commit_with_latest_tag = Some(commit_messages[1].into());
 
         // When
         let result = Changes::from_repo(&repository);
