@@ -1,8 +1,8 @@
-use crate::conventional_commit::ConventionalCommit;
+use crate::repo::ConventionalCommit;
 use std::collections::HashSet;
 use std::fmt::Display;
 
-pub use crate::commit_fetcher::RepositoryFetchCommitExtension;
+pub use crate::repo::RepositoryExtension;
 
 /// Structure that represents the changes in a git repository
 #[derive(Debug)]
@@ -38,7 +38,7 @@ impl Changes {
     /// let changes = Changes::from_repo(&git_repo);
     /// println!("changes: {changes}")
     /// ```
-    pub fn from_repo(repository: &impl RepositoryFetchCommitExtension) -> Self {
+    pub fn from_repo(repository: &impl RepositoryExtension) -> Self {
         let major_intentions = [(":boom:", "💥")];
         let minor_intentions = [
             (":sparkles:", "✨"),
@@ -119,7 +119,14 @@ impl Changes {
             (":money_with_wings:", "💸"),
         ];
 
-        match repository.fetch_commits_since_last_version() {
+        let version_tag = repository.get_latest_version_tag().ok().unwrap_or(None);
+
+        let unsorted_commits = match version_tag {
+            Some(version_tag) => repository.fetch_commits_until(version_tag.commit_oid),
+            None => repository.fetch_all_commits(),
+        };
+
+        match unsorted_commits {
             Ok(unsorted_commits) => Self {
                 major: get_commits_with_intention(
                     unsorted_commits.clone(),
@@ -284,9 +291,11 @@ fn get_commits_with_intention(
 
 #[cfg(test)]
 mod changes_tests {
-    use crate::changes::{Changes, RepositoryFetchCommitExtension};
-    use crate::conventional_commit::ConventionalCommit;
+    use crate::changes::{Changes, RepositoryExtension};
+    use crate::repo::{ConventionalCommit, VersionTag};
     use crate::test_util::MockError;
+    use git2::Oid;
+    use semver::Version;
     use std::error::Error;
 
     fn convert(messages: Vec<&str>) -> Vec<ConventionalCommit> {
@@ -301,16 +310,53 @@ mod changes_tests {
     struct MockedRepository {
         commits: Vec<ConventionalCommit>,
         commit_fetching_fails: bool,
+        commit_with_latest_tag: Option<String>,
+        latest_version_tag: Option<VersionTag>,
+        tag_fetching_fails: bool,
     }
 
-    impl RepositoryFetchCommitExtension for MockedRepository {
-        fn fetch_commits_since_last_version(
+    impl RepositoryExtension for MockedRepository {
+        fn fetch_commits_until(
             &self,
+            stop_oid: Oid,
         ) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+            assert_eq!(
+                stop_oid,
+                self.latest_version_tag.as_ref().unwrap().commit_oid,
+                "fetch_commits_until is not called with the latest version tag"
+            );
             if self.commit_fetching_fails {
-                return Err(Box::new(MockError));
+                Err(Box::new(MockError))
+            } else {
+                let commits = self
+                    .commits
+                    .clone()
+                    .into_iter()
+                    .rev()
+                    .map(|commit| commit.message.clone())
+                    .take_while(|message| {
+                        message.as_str() != self.commit_with_latest_tag.as_ref().unwrap().as_str()
+                    })
+                    .map(|message| ConventionalCommit { message })
+                    .collect();
+                Ok(commits)
             }
-            Ok(self.commits.clone())
+        }
+
+        fn fetch_all_commits(&self) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+            if self.commit_fetching_fails {
+                Err(Box::new(MockError))
+            } else {
+                Ok(self.commits.clone())
+            }
+        }
+
+        fn get_latest_version_tag(&self) -> Result<Option<VersionTag>, Box<dyn Error>> {
+            if self.tag_fetching_fails {
+                Err(Box::new(MockError))
+            } else {
+                Ok(self.latest_version_tag.clone())
+            }
         }
     }
 
@@ -319,6 +365,9 @@ mod changes_tests {
             Self {
                 commits: convert(commits),
                 commit_fetching_fails: false,
+                commit_with_latest_tag: None,
+                latest_version_tag: None,
+                tag_fetching_fails: false,
             }
         }
 
@@ -326,6 +375,9 @@ mod changes_tests {
             Self {
                 commits: Vec::new(),
                 commit_fetching_fails: false,
+                commit_with_latest_tag: None,
+                latest_version_tag: None,
+                tag_fetching_fails: false,
             }
         }
     }
@@ -516,12 +568,71 @@ mod changes_tests {
         };
         assert_eq!(result, expected_result);
     }
+
+    #[test]
+    fn creating_from_repo_with_tags() {
+        // Given
+        let commit_messages = vec![
+            "💥 introduce breaking changes",
+            ":sparkles: introduce new feature",
+            ":money_with_wings: add sponsorship or money related infrastructure",
+            ":memo: add or update documentation",
+        ];
+        let mut repository = MockedRepository::from_commits(commit_messages.clone());
+        repository.latest_version_tag = Some(VersionTag {
+            version: Version::new(1, 0, 0),
+            commit_oid: Oid::zero(),
+        });
+        repository.commit_with_latest_tag = Some(commit_messages[1].try_into().unwrap());
+
+        // When
+        let result = Changes::from_repo(&repository);
+
+        // Then
+        let expected_result = Changes {
+            major: Vec::new(),
+            minor: Vec::new(),
+            patch: Vec::new(),
+            other: convert(commit_messages[2..].to_vec()),
+        };
+        assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn error_during_fetching_latest_tag() {
+        // Given
+        let commit_messages = vec![
+            ":sparkles: introduce new feature",
+            ":children_crossing: improve user experience / usability",
+            "💄 add or update the UI and style files",
+            ":iphone: work on responsive design",
+            ":egg: add or update an easter egg",
+            ":chart_with_upwards_trend: add or update analytics or track code",
+            ":heavy_plus_sign: add a dependency",
+            ":heavy_minus_sign: remove a dependency",
+            ":passport_control: work on code related to authorization, roles and permissions",
+        ];
+        let mut repository = MockedRepository::from_commits(commit_messages.clone());
+        repository.tag_fetching_fails = true;
+
+        // When
+        let result = Changes::from_repo(&repository);
+
+        // Then
+        let expected_result = Changes {
+            major: Vec::new(),
+            minor: convert(commit_messages),
+            patch: Vec::new(),
+            other: Vec::new(),
+        };
+        assert_eq!(result, expected_result);
+    }
 }
 
 #[cfg(test)]
 mod evaluate_changes_tests {
     use crate::changes::{Changes, SemanticVersionAction};
-    use crate::conventional_commit::ConventionalCommit;
+    use crate::repo::ConventionalCommit;
 
     #[test]
     fn has_no_changes() {

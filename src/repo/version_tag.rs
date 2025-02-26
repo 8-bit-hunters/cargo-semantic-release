@@ -3,39 +3,36 @@ use regex::Regex;
 use semver::Version;
 use std::error::Error;
 
-pub trait RepositoryVersionTagExtension {
-    fn get_latest_version_tag(&self) -> Result<Option<VersionTag>, Box<dyn Error>>;
-}
+/// Get the latest version tag.
+/// ## Returns
+/// [`VersionTag`] containing the latest version tag.
+pub fn get_latest_version_tag(
+    repository: &Repository,
+) -> Result<Option<VersionTag>, Box<dyn Error>> {
+    let references: Vec<Reference> = repository
+        .references()?
+        .filter_map(|reference| reference.ok())
+        .collect();
 
-impl RepositoryVersionTagExtension for Repository {
-    /// Get the latest version tag.
-    /// ## Returns
-    /// [`VersionTag`] containing the latest version tag.
-    fn get_latest_version_tag(&self) -> Result<Option<VersionTag>, Box<dyn Error>> {
-        let references: Vec<Reference> = self
-            .references()?
-            .filter_map(|reference| reference.ok())
-            .collect();
-
-        let version_tags: Vec<VersionTag> = references
-            .iter()
-            .filter(|reference| reference.is_tag())
-            .filter_map(|reference| {
-                reference.target().and_then(|oid| {
-                    self.find_object(oid, None)
-                        .ok()
-                        .map(|object| (reference, object))
-                })
+    let version_tags: Vec<VersionTag> = references
+        .iter()
+        .filter(|reference| reference.is_tag())
+        .filter_map(|reference| {
+            reference.target().and_then(|oid| {
+                repository
+                    .find_object(oid, None)
+                    .ok()
+                    .map(|object| (reference, object))
             })
-            .filter_map(|(reference, object)| {
-                Tag::from_object(object)
-                    .and_then(|tag| VersionTag::from_annotated_tag(&tag))
-                    .or_else(|| VersionTag::from_lightweight_tag(reference))
-            })
-            .collect();
+        })
+        .filter_map(|(reference, object)| {
+            Tag::from_object(object)
+                .and_then(|tag| VersionTag::from_annotated_tag(&tag))
+                .or_else(|| VersionTag::from_lightweight_tag(reference))
+        })
+        .collect();
 
-        Ok(version_tags.iter().max().cloned())
-    }
+    Ok(version_tags.iter().max().cloned())
 }
 
 trait AnnotatedTag {
@@ -108,9 +105,9 @@ impl VersionTag {
 
 #[cfg(test)]
 mod version_tag_tests {
+    pub use crate::repo::RepositoryExtension;
     use crate::test_util::repo_init;
     pub use crate::test_util::RepositoryTestExtensions;
-    pub use crate::version_tag::RepositoryVersionTagExtension;
     use semver::Version;
 
     #[test]
