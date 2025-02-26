@@ -198,7 +198,7 @@ mod version_tag_tests {
             .iter()
             .map(|commit| repository.find_commit_by_message(commit).unwrap())
             .zip(tags)
-            .for_each(|(commit_id, tag)| repository.add_tag(commit_id, &tag));
+            .for_each(|(commit_id, tag)| repository.add_tag(commit_id, tag));
 
         // When
         let result = repository.get_latest_version_tag().unwrap().unwrap();
