@@ -27,8 +27,7 @@ pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling:
     .invalid(style::INVALID);
 
 fn main() {
-    
-    // If the clap parser finds the --version or --help argument it will 
+    // If the clap parser finds the --version or --help argument it will
     // show the version and help information respectively. Then it will exit.
     // When no arguments are found the application will just continue after
     // the parse step.
