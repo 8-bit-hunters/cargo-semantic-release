@@ -33,10 +33,16 @@ fn main() {
     // the parse step.
     let _ = CargoCli::parse();
 
-    let path = env::current_dir().expect("Failed to get current directory");
+    let path = env::current_dir().unwrap_or_else(|error| {
+        eprintln!("Error during getting the current directory:\n\t{error}");
+        process::exit(1);
+    });
     println!("Current directory: {}", path.display());
 
-    let git_repo = Repository::open(path).expect("Failed to open git repo");
+    let git_repo = Repository::open(path).unwrap_or_else(|error| {
+        eprintln!("Error during opening repository:\n\t{error}");
+        process::exit(1);
+    });
 
     let changes = Changes::from_repo(&git_repo).unwrap_or_else(|error| {
         eprintln!("Error during fetching changes from repository:\n\t{error}");
