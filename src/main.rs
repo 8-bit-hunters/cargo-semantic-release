@@ -44,7 +44,7 @@ fn main() {
         process::exit(1);
     });
 
-    let changes = Changes::from_repo(&git_repo).unwrap_or_else(|error| {
+    let changes = Changes::try_from(&git_repo).unwrap_or_else(|error| {
         eprintln!("Error during fetching changes from repository:\n\t{error}");
         process::exit(1);
     });

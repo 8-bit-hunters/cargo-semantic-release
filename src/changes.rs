@@ -1,9 +1,9 @@
 use crate::repo::ConventionalCommit;
+pub use crate::repo::RepositoryExtension;
+use git2::Repository;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Display;
-
-pub use crate::repo::RepositoryExtension;
 
 /// Structure that represents the changes in a git repository
 #[derive(Debug)]
@@ -178,6 +178,14 @@ impl Changes {
     }
 }
 
+impl TryFrom<&Repository> for Changes {
+    type Error = Box<dyn Error>;
+
+    fn try_from(value: &Repository) -> Result<Self, Self::Error> {
+        Self::from_repo(value)
+    }
+}
+
 impl PartialEq for Changes {
     /// Compare two [`Changes`] struct to see if they have the same elements.
     ///
@@ -289,7 +297,7 @@ fn get_commits_with_intention(
 mod changes_tests {
     use crate::changes::{Changes, RepositoryExtension};
     use crate::repo::{ConventionalCommit, VersionTag};
-    use crate::test_util::MockError;
+    use crate::test_util::{repo_init, MockError};
     use git2::Oid;
     use semver::Version;
     use std::error::Error;
@@ -610,6 +618,25 @@ mod changes_tests {
 
         // Then
         assert!(result.is_err(), "Expected Error, got Ok");
+    }
+
+    #[test]
+    fn creating_with_try_from() {
+        // Given
+        let commit_messages = vec!["💥 introduce breaking changes"];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
+
+        // When
+        let result = Changes::try_from(&repository).unwrap();
+
+        // Then
+        let expected_result = Changes {
+            major: convert(commit_messages),
+            minor: Vec::new(),
+            patch: Vec::new(),
+            other: Vec::new(),
+        };
+        assert_eq!(result, expected_result);
     }
 }
 
