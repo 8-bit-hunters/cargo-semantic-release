@@ -1,5 +1,6 @@
 use crate::repo::ConventionalCommit;
 use std::collections::HashSet;
+use std::error::Error;
 use std::fmt::Display;
 
 pub use crate::repo::RepositoryExtension;
@@ -35,10 +36,10 @@ impl Changes {
     ///
     /// let git_repo = Repository::open(".").unwrap();
     ///
-    /// let changes = Changes::from_repo(&git_repo);
+    /// let changes = Changes::from_repo(&git_repo).expect("error during fetching changes");
     /// println!("changes: {changes}")
     /// ```
-    pub fn from_repo(repository: &impl RepositoryExtension) -> Self {
+    pub fn from_repo(repository: &impl RepositoryExtension) -> Result<Self, Box<dyn Error>> {
         let major_intentions = [(":boom:", "💥")];
         let minor_intentions = [
             (":sparkles:", "✨"),
@@ -119,7 +120,7 @@ impl Changes {
             (":money_with_wings:", "💸"),
         ];
 
-        let version_tag = repository.get_latest_version_tag().ok().unwrap_or(None);
+        let version_tag = repository.get_latest_version_tag()?;
 
         let unsorted_commits = match version_tag {
             Some(version_tag) => repository.fetch_commits_until(version_tag.commit_oid),
@@ -127,7 +128,7 @@ impl Changes {
         };
 
         match unsorted_commits {
-            Ok(unsorted_commits) => Self {
+            Ok(unsorted_commits) => Ok(Self {
                 major: get_commits_with_intention(
                     unsorted_commits.clone(),
                     major_intentions.to_vec(),
@@ -141,13 +142,8 @@ impl Changes {
                     patch_intentions.to_vec(),
                 ),
                 other: get_commits_with_intention(unsorted_commits, other_intentions.to_vec()),
-            },
-            Err(_) => Self {
-                major: Vec::new(),
-                minor: Vec::new(),
-                patch: Vec::new(),
-                other: Vec::new(),
-            },
+            }),
+            Err(e) => Err(e),
         }
     }
 
@@ -165,7 +161,7 @@ impl Changes {
     ///
     ///  let git_repo = Repository::open(".").unwrap();
     ///
-    ///  let action = Changes::from_repo(&git_repo).define_action_for_semantic_version();
+    ///  let action = Changes::from_repo(&git_repo).expect("Error during fetching changes").define_action_for_semantic_version();
     ///  println!("suggested change of semantic version: {}", action);
     /// ```
     pub fn define_action_for_semantic_version(self) -> SemanticVersionAction {
@@ -198,8 +194,8 @@ impl PartialEq for Changes {
     ///
     /// let git_repo = Repository::open(".").unwrap();
     ///
-    /// let changes_1 = Changes::from_repo(&git_repo);
-    /// let changes_2 = Changes::from_repo(&git_repo);
+    /// let changes_1 = Changes::from_repo(&git_repo).expect("error during fetching changes");
+    /// let changes_2 = Changes::from_repo(&git_repo).expect("error during fetching changes");
     ///
     /// assert_eq!(changes_1, changes_2);
     /// ```
@@ -388,7 +384,7 @@ mod changes_tests {
         let repository = MockedRepository::new();
 
         // When
-        let result = Changes::from_repo(&repository);
+        let result = Changes::from_repo(&repository).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -410,13 +406,7 @@ mod changes_tests {
         let result = Changes::from_repo(&repository);
 
         // Then
-        let expected_result = Changes {
-            major: Vec::new(),
-            minor: Vec::new(),
-            patch: Vec::new(),
-            other: Vec::new(),
-        };
-        assert_eq!(result, expected_result);
+        assert!(result.is_err(), "Expected error, but got Ok");
     }
 
     #[test]
@@ -426,7 +416,7 @@ mod changes_tests {
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
-        let result = Changes::from_repo(&repository);
+        let result = Changes::from_repo(&repository).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -455,7 +445,7 @@ mod changes_tests {
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
-        let result = Changes::from_repo(&repository);
+        let result = Changes::from_repo(&repository).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -517,7 +507,7 @@ mod changes_tests {
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
-        let result = Changes::from_repo(&repository);
+        let result = Changes::from_repo(&repository).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -557,7 +547,7 @@ mod changes_tests {
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
-        let result = Changes::from_repo(&repository);
+        let result = Changes::from_repo(&repository).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -586,7 +576,7 @@ mod changes_tests {
         repository.commit_with_latest_tag = Some(commit_messages[1].into());
 
         // When
-        let result = Changes::from_repo(&repository);
+        let result = Changes::from_repo(&repository).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -619,13 +609,7 @@ mod changes_tests {
         let result = Changes::from_repo(&repository);
 
         // Then
-        let expected_result = Changes {
-            major: Vec::new(),
-            minor: convert(commit_messages),
-            patch: Vec::new(),
-            other: Vec::new(),
-        };
-        assert_eq!(result, expected_result);
+        assert!(result.is_err(), "Expected Error, got Ok");
     }
 }
 
