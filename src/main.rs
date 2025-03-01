@@ -3,7 +3,7 @@ use cargo_semantic_release::Changes;
 use clap::Parser;
 use clap_cargo::style;
 use git2::Repository;
-use std::env;
+use std::{env, process};
 
 #[derive(Parser)]
 #[command(name = "cargo")]
@@ -38,7 +38,10 @@ fn main() {
 
     let git_repo = Repository::open(path).expect("Failed to open git repo");
 
-    let changes = Changes::from_repo(&git_repo);
+    let changes = Changes::from_repo(&git_repo).unwrap_or_else(|error| {
+        eprintln!("Error during fetching changes from repository:\n\t{error}");
+        process::exit(1);
+    });
     println!("Changes in the repository:\n{changes}");
 
     let action = changes.define_action_for_semantic_version();
