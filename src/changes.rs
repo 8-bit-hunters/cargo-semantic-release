@@ -275,7 +275,7 @@ impl Display for SemanticVersionAction {
 fn convert_to_string_vector(commits: Vec<ConventionalCommit>) -> Vec<String> {
     commits
         .into_iter()
-        .map(|commit| commit.message().to_string())
+        .map(|commit| format!("{commit}"))
         .collect::<Vec<String>>()
 }
 
@@ -297,7 +297,7 @@ fn get_commits_with_intention(
 mod changes_tests {
     use crate::changes::{Changes, RepositoryExtension};
     use crate::repo::{ConventionalCommit, VersionTag};
-    use crate::test_util::{repo_init, MockError};
+    use crate::test_util::{repo_init, MockError, RepositoryTestExtensions};
     use git2::Oid;
     use semver::Version;
     use std::error::Error;
@@ -307,6 +307,7 @@ mod changes_tests {
             .iter()
             .map(|commit_message| ConventionalCommit {
                 message: commit_message.to_string(),
+                hash: "".to_string(),
             })
             .collect()
     }
@@ -341,7 +342,10 @@ mod changes_tests {
                     .take_while(|message| {
                         message.as_str() != self.commit_with_latest_tag.as_ref().unwrap().as_str()
                     })
-                    .map(|message| ConventionalCommit { message })
+                    .map(|message| ConventionalCommit {
+                        message,
+                        hash: "".to_string(),
+                    })
                     .collect();
                 Ok(commits)
             }
@@ -625,13 +629,19 @@ mod changes_tests {
         // Given
         let commit_messages = vec!["💥 introduce breaking changes"];
         let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
+        let commit = repository
+            .find_commit_by_message("💥 introduce breaking changes")
+            .unwrap();
 
         // When
         let result = Changes::try_from(&repository).unwrap();
 
         // Then
         let expected_result = Changes {
-            major: convert(commit_messages),
+            major: vec![ConventionalCommit {
+                message: commit.message().unwrap().to_string(),
+                hash: commit.id().to_string(),
+            }],
             minor: Vec::new(),
             patch: Vec::new(),
             other: Vec::new(),
@@ -654,6 +664,7 @@ mod evaluate_changes_tests {
             patch: Vec::new(),
             other: vec![ConventionalCommit {
                 message: "other commit".to_string(),
+                hash: "".to_string(),
             }],
         };
 
@@ -672,9 +683,11 @@ mod evaluate_changes_tests {
             minor: Vec::new(),
             patch: vec![ConventionalCommit {
                 message: "patch commit".to_string(),
+                hash: "".to_string(),
             }],
             other: vec![ConventionalCommit {
                 message: "other commit".to_string(),
+                hash: "".to_string(),
             }],
         };
 
@@ -692,12 +705,15 @@ mod evaluate_changes_tests {
             major: Vec::new(),
             minor: vec![ConventionalCommit {
                 message: "minor commit".to_string(),
+                hash: "".to_string(),
             }],
             patch: vec![ConventionalCommit {
                 message: "patch commit".to_string(),
+                hash: "".to_string(),
             }],
             other: vec![ConventionalCommit {
                 message: "other commit".to_string(),
+                hash: "".to_string(),
             }],
         };
 
@@ -714,15 +730,19 @@ mod evaluate_changes_tests {
         let changes = Changes {
             major: vec![ConventionalCommit {
                 message: "major commit".to_string(),
+                hash: "".to_string(),
             }],
             minor: vec![ConventionalCommit {
                 message: "minor commit".to_string(),
+                hash: "".to_string(),
             }],
             patch: vec![ConventionalCommit {
                 message: "patch commit".to_string(),
+                hash: "".to_string(),
             }],
             other: vec![ConventionalCommit {
                 message: "other commit".to_string(),
+                hash: "".to_string(),
             }],
         };
 
