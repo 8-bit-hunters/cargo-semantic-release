@@ -1,10 +1,10 @@
+mod commit;
 mod commit_fetcher;
-mod conventional_commit;
 mod version_tag;
 
 use crate::repo::commit_fetcher::{fetch_all_commits, fetch_commits_until};
 use crate::repo::version_tag::get_latest_version_tag;
-pub use conventional_commit::ConventionalCommit;
+pub use commit::ConventionalCommit;
 use git2::{Oid, Repository};
 use std::error::Error;
 pub use version_tag::VersionTag;
