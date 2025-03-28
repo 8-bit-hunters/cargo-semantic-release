@@ -1,6 +1,7 @@
 use git2::Commit;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use thiserror::Error;
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 struct GitmojiCommit {
@@ -10,18 +11,29 @@ struct GitmojiCommit {
     scope: String,
 }
 
+#[derive(Debug, Error, PartialEq)]
+pub enum GitmojiCommitError {
+    #[error("Commit does not have a message")]
+    MissingMessage,
+    #[error("Commit message does not contain a valid Gitmoji intention")]
+    MissingIntention,
+}
+
 impl TryFrom<Commit<'_>> for GitmojiCommit {
-    type Error = ();
+    type Error = GitmojiCommitError;
 
     fn try_from(value: Commit<'_>) -> Result<Self, Self::Error> {
-        let message = value.message().expect("Commit don't have message");
-        let intention = Gitmoji::try_from(message).expect("Commit don't have intention");
+        let message = value.message().ok_or(GitmojiCommitError::MissingMessage)?;
+        let intention = Gitmoji::try_from(message)?;
+
         let message = message
             .replace(intention.as_utf(), "")
             .replace(intention.as_shortcode(), "")
             .trim_start()
             .to_string();
+
         let hash = value.id().to_string();
+
         Ok(Self {
             message,
             hash,
@@ -299,7 +311,7 @@ impl Gitmoji {
 }
 
 impl TryFrom<&str> for Gitmoji {
-    type Error = ();
+    type Error = GitmojiCommitError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let intention: Vec<Gitmoji> = Gitmoji::gitmoji_map()
@@ -311,7 +323,7 @@ impl TryFrom<&str> for Gitmoji {
             .collect();
         match intention.first() {
             Some(intention) => Ok(*intention),
-            None => Err(()),
+            None => Err(GitmojiCommitError::MissingIntention),
         }
     }
 }
@@ -337,7 +349,7 @@ impl Emoji {
 
 #[cfg(test)]
 mod test_gitmoji {
-    use crate::repo::commit::gitmoji::Gitmoji;
+    use crate::repo::commit::gitmoji::{Gitmoji, GitmojiCommitError};
 
     #[test]
     fn display_formatting() {
@@ -394,7 +406,7 @@ mod test_gitmoji {
     }
 
     #[test]
-    fn test_from_str() {
+    fn test_from_str_with_intention() {
         // Given
         let str = "hello :boom:";
 
@@ -403,5 +415,17 @@ mod test_gitmoji {
 
         // Then
         assert_eq!(result, Gitmoji::Boom);
+    }
+
+    #[test]
+    fn test_from_str_without_intention() {
+        // Given
+        let str = "hello";
+
+        // When
+        let result = Gitmoji::try_from(str);
+
+        // Then
+        assert_eq!(result.unwrap_err(), GitmojiCommitError::MissingIntention);
     }
 }
