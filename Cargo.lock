@@ -75,6 +75,7 @@ dependencies = [
  "clap",
  "clap-cargo",
  "git2",
+ "once_cell",
  "regex",
  "semver",
  "tempfile",
