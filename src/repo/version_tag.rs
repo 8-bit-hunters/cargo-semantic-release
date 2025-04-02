@@ -105,7 +105,7 @@ impl VersionTag {
 
 #[cfg(test)]
 mod version_tag_tests {
-    pub use crate::repo::RepositoryExtension;
+    use crate::repo::prelude::RepositoryExtension;
     use crate::test_util::repo_init;
     pub use crate::test_util::RepositoryTestExtensions;
     use semver::Version;
