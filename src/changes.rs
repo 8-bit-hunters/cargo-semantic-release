@@ -1,5 +1,4 @@
-use crate::repo::ConventionalCommit;
-pub use crate::repo::RepositoryExtension;
+use crate::repo::prelude::*;
 use git2::Repository;
 use std::collections::HashSet;
 use std::error::Error;
@@ -7,18 +6,18 @@ use std::fmt::Display;
 
 /// Structure that represents the changes in a git repository
 #[derive(Debug)]
-pub struct Changes {
+pub struct Changes<T: CommitInterface + Clone + Display> {
     /// Vector of commits with major changes
-    major: Vec<ConventionalCommit>,
+    major: Vec<T>,
     /// Vector of commits with minor changes
-    minor: Vec<ConventionalCommit>,
+    minor: Vec<T>,
     /// Vector of commits with patch changes
-    patch: Vec<ConventionalCommit>,
+    patch: Vec<T>,
     /// Vector of commits with other changes
-    other: Vec<ConventionalCommit>,
+    other: Vec<T>,
 }
 
-impl Changes {
+impl Changes<GitmojiCommit> {
     /// Sort the commits from a given repo into `major`, `minor`, `patch` and `other`
     /// change categories according to their commit intentions.
     ///
@@ -40,111 +39,124 @@ impl Changes {
     /// println!("changes: {changes}")
     /// ```
     pub fn from_repo(repository: &impl RepositoryExtension) -> Result<Self, Box<dyn Error>> {
-        let major_intentions = [(":boom:", "💥")];
+        let major_intentions = [Gitmoji::Boom];
         let minor_intentions = [
-            (":sparkles:", "✨"),
-            (":children_crossing:", "🚸"),
-            (":lipstick:", "💄"),
-            (":iphone:", "📱"),
-            (":egg:", "🥚"),
-            (":chart_with_upwards_trend:", "📈"),
-            (":heavy_plus_sign:", "➕"),
-            (":heavy_minus_sign:", "➖"),
-            (":passport_control:", "🛂"),
+            Gitmoji::Sparkles,
+            Gitmoji::ChildrenCrossing,
+            Gitmoji::Lipstick,
+            Gitmoji::Iphone,
+            Gitmoji::Egg,
+            Gitmoji::ChartWithUpwardsTrend,
+            Gitmoji::HeavyPlusSign,
+            Gitmoji::HeavyMinusSign,
+            Gitmoji::PassportControl,
         ];
         let patch_intentions = [
-            (":art:", "🎨"),
-            (":ambulance:", "🚑️"),
-            (":lock:", "🔒️"),
-            (":bug:", "🐛"),
-            (":zap:", "⚡️"),
-            (":goal_net:", "🥅"),
-            (":alien:", "👽️"),
-            (":wheelchair:", "♿️"),
-            (":speech_balloon:", "💬"),
-            (":mag:", "🔍️"),
-            (":fire:", "🔥"),
-            (":white_check_mark:", "✅"),
-            (":closed_lock_with_key:", "🔐"),
-            (":rotating_light:", "🚨"),
-            (":green_heart:", "💚"),
-            (":arrow_down:", "⬇️"),
-            (":arrow_up:", "⬆️"),
-            (":pushpin:", "📌"),
-            (":construction_worker:", "👷"),
-            (":recycle:", "♻️"),
-            (":wrench:", "🔧"),
-            (":hammer:", "🔨"),
-            (":globe_with_meridians:", "🌐"),
-            (":package:", "📦️"),
-            (":truck:", "🚚"),
-            (":bento:", "🍱"),
-            (":card_file_box:", "🗃️"),
-            (":loud_sound:", "🔊"),
-            (":mute:", "🔇"),
-            (":building_construction:", "🏗️"),
-            (":camera_flash:", "📸"),
-            (":label:", "🏷️"),
-            (":seedling:", "🌱"),
-            (":triangular_flag_on_post:", "🚩"),
-            (":dizzy:", "💫"),
-            (":adhesive_bandage:", "🩹"),
-            (":monocle_face:", "🧐"),
-            (":necktie:", "👔"),
-            (":stethoscope:", "🩺"),
-            (":technologist:", "🧑‍💻"),
-            (":thread:", "🧵"),
-            (":safety_vest:", "🦺"),
+            Gitmoji::Art,
+            Gitmoji::Ambulance,
+            Gitmoji::Lock,
+            Gitmoji::Bug,
+            Gitmoji::Zap,
+            Gitmoji::GoalNet,
+            Gitmoji::Alien,
+            Gitmoji::Wheelchair,
+            Gitmoji::SpeechBalloon,
+            Gitmoji::Mag,
+            Gitmoji::Fire,
+            Gitmoji::WhiteCheckMark,
+            Gitmoji::ClosedLockWithKey,
+            Gitmoji::RotatingLight,
+            Gitmoji::GreenHeart,
+            Gitmoji::ArrowDown,
+            Gitmoji::ArrowUp,
+            Gitmoji::Pushpin,
+            Gitmoji::ConstructionWorker,
+            Gitmoji::Recycle,
+            Gitmoji::Wrench,
+            Gitmoji::Hammer,
+            Gitmoji::GlobeWithMeridians,
+            Gitmoji::Package,
+            Gitmoji::Truck,
+            Gitmoji::Bento,
+            Gitmoji::CardFileBox,
+            Gitmoji::LoudSound,
+            Gitmoji::Mute,
+            Gitmoji::BuildingConstruction,
+            Gitmoji::CameraFlash,
+            Gitmoji::Label,
+            Gitmoji::Seedling,
+            Gitmoji::TriangularFlagOnPost,
+            Gitmoji::Dizzy,
+            Gitmoji::AdhesiveBandage,
+            Gitmoji::MonocleFace,
+            Gitmoji::Necktie,
+            Gitmoji::Stethoscope,
+            Gitmoji::Technologist,
+            Gitmoji::Thread,
+            Gitmoji::SafetyVest,
         ];
         let other_intentions = [
-            (":memo:", "📝"),
-            (":rocket:", "🚀"),
-            (":tada:", "🎉"),
-            (":bookmark:", "🔖"),
-            (":construction:", "🚧"),
-            (":pencil2:", "✏️"),
-            (":poop:", "💩"),
-            (":rewind:", "⏪️"),
-            (":twisted_rightwards_arrows:", "🔀"),
-            (":page_facing_up:", "📄"),
-            (":bulb:", "💡"),
-            (":beers:", "🍻"),
-            (":bust_in_silhouette:", "👥"),
-            (":clown_face:", "🤡"),
-            (":see_no_evil:", "🙈"),
-            (":alembic:", "⚗️"),
-            (":wastebasket:", "🗑️"),
-            (":coffin:", "⚰️"),
-            (":test_tube:", "🧪"),
-            (":bricks:", "🧱"),
-            (":money_with_wings:", "💸"),
+            Gitmoji::Memo,
+            Gitmoji::Rocket,
+            Gitmoji::Tada,
+            Gitmoji::Bookmark,
+            Gitmoji::Construction,
+            Gitmoji::Pencil2,
+            Gitmoji::Poop,
+            Gitmoji::Rewind,
+            Gitmoji::TwistedRightwardsArrows,
+            Gitmoji::PageFacingUp,
+            Gitmoji::Bulb,
+            Gitmoji::Beers,
+            Gitmoji::BustInSilhouette,
+            Gitmoji::ClownFace,
+            Gitmoji::SeeNoEvil,
+            Gitmoji::Alembic,
+            Gitmoji::Wastebasket,
+            Gitmoji::Coffin,
+            Gitmoji::TestTube,
+            Gitmoji::Bricks,
+            Gitmoji::MoneyWithWings,
         ];
 
         let version_tag = repository.get_latest_version_tag()?;
 
         let unsorted_commits = match version_tag {
-            Some(version_tag) => repository.fetch_commits_until(version_tag.commit_oid),
-            None => repository.fetch_all_commits(),
+            Some(version_tag) => repository.fetch_commits_until(version_tag.commit_oid)?,
+            None => repository.fetch_all_commits()?,
         };
 
-        match unsorted_commits {
-            Ok(unsorted_commits) => Ok(Self {
-                major: get_commits_with_intention(
-                    unsorted_commits.clone(),
-                    major_intentions.to_vec(),
-                ),
-                minor: get_commits_with_intention(
-                    unsorted_commits.clone(),
-                    minor_intentions.to_vec(),
-                ),
-                patch: get_commits_with_intention(
-                    unsorted_commits.clone(),
-                    patch_intentions.to_vec(),
-                ),
-                other: get_commits_with_intention(unsorted_commits, other_intentions.to_vec()),
-            }),
-            Err(e) => Err(e),
-        }
+        let unsorted_commits = unsorted_commits
+            .iter()
+            .filter_map(|commit| GitmojiCommit::try_from(commit).ok())
+            .collect::<Vec<GitmojiCommit>>();
+
+        let major = get_commits_with_intention::<GitmojiCommit>(
+            unsorted_commits.clone(),
+            major_intentions.to_vec(),
+        );
+
+        let minor = get_commits_with_intention::<GitmojiCommit>(
+            unsorted_commits.clone(),
+            minor_intentions.to_vec(),
+        );
+
+        let patch = get_commits_with_intention::<GitmojiCommit>(
+            unsorted_commits.clone(),
+            patch_intentions.to_vec(),
+        );
+
+        let other = get_commits_with_intention::<GitmojiCommit>(
+            unsorted_commits.clone(),
+            other_intentions.to_vec(),
+        );
+
+        Ok(Self {
+            major,
+            minor,
+            patch,
+            other,
+        })
     }
 
     /// Evaluate the changes find in a repository to figure out the semantic version action
@@ -178,7 +190,7 @@ impl Changes {
     }
 }
 
-impl TryFrom<&Repository> for Changes {
+impl TryFrom<&Repository> for Changes<GitmojiCommit> {
     type Error = Box<dyn Error>;
 
     fn try_from(value: &Repository) -> Result<Self, Self::Error> {
@@ -186,7 +198,7 @@ impl TryFrom<&Repository> for Changes {
     }
 }
 
-impl PartialEq for Changes {
+impl PartialEq for Changes<GitmojiCommit> {
     /// Compare two [`Changes`] struct to see if they have the same elements.
     ///
     /// # Returns
@@ -218,7 +230,7 @@ impl PartialEq for Changes {
     }
 }
 
-impl Display for Changes {
+impl<T: CommitInterface + Clone + Display> Display for Changes<T> {
     /// Format the values in [`Changes`]
     ///
     /// Example output:
@@ -272,23 +284,23 @@ impl Display for SemanticVersionAction {
     }
 }
 
-fn convert_to_string_vector(commits: Vec<ConventionalCommit>) -> Vec<String> {
+fn convert_to_string_vector<T: Display>(commits: Vec<T>) -> Vec<String> {
     commits
         .into_iter()
         .map(|commit| format!("{commit}"))
         .collect::<Vec<String>>()
 }
 
-fn get_commits_with_intention(
-    commits: Vec<ConventionalCommit>,
-    intentions: Vec<(&str, &str)>,
-) -> Vec<ConventionalCommit> {
+fn get_commits_with_intention<U>(commits: Vec<U>, intentions: Vec<Gitmoji>) -> Vec<U>
+where
+    U: CommitInterface,
+{
     commits
         .into_iter()
         .filter(|commit| {
-            intentions.iter().any(|intention| {
-                commit.message.contains(intention.0) || commit.message.contains(intention.1)
-            })
+            intentions
+                .iter()
+                .any(|intention| commit.intention() == intention)
         })
         .collect()
 }
@@ -296,35 +308,23 @@ fn get_commits_with_intention(
 #[cfg(test)]
 mod changes_tests {
     use crate::changes::{Changes, RepositoryExtension};
-    use crate::repo::{ConventionalCommit, VersionTag};
+    use crate::repo::prelude::VersionTag;
+    use crate::repo::prelude::*;
     use crate::test_util::{repo_init, MockError, RepositoryTestExtensions};
     use git2::Oid;
     use semver::Version;
     use std::error::Error;
 
-    fn convert(messages: Vec<&str>) -> Vec<ConventionalCommit> {
-        messages
-            .iter()
-            .map(|commit_message| ConventionalCommit {
-                message: commit_message.to_string(),
-                hash: "".to_string(),
-            })
-            .collect()
-    }
-
     struct MockedRepository {
-        commits: Vec<ConventionalCommit>,
+        commits: Vec<GitmojiCommit>,
         commit_fetching_fails: bool,
-        commit_with_latest_tag: Option<String>,
+        commit_with_latest_tag: Option<GitmojiCommit>,
         latest_version_tag: Option<VersionTag>,
         tag_fetching_fails: bool,
     }
 
     impl RepositoryExtension for MockedRepository {
-        fn fetch_commits_until(
-            &self,
-            stop_oid: Oid,
-        ) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+        fn fetch_commits_until(&self, stop_oid: Oid) -> Result<Vec<Commit>, Box<dyn Error>> {
             assert_eq!(
                 stop_oid,
                 self.latest_version_tag.as_ref().unwrap().commit_oid,
@@ -338,24 +338,36 @@ mod changes_tests {
                     .clone()
                     .into_iter()
                     .rev()
-                    .map(|commit| commit.message.clone())
-                    .take_while(|message| {
-                        message.as_str() != self.commit_with_latest_tag.as_ref().unwrap().as_str()
+                    .take_while(|commit| {
+                        commit
+                            != self
+                                .commit_with_latest_tag
+                                .as_ref()
+                                .expect("commit for latest tag is not set")
                     })
-                    .map(|message| ConventionalCommit {
-                        message,
-                        hash: "".to_string(),
+                    .map(|commit| Commit {
+                        message: format!("{} {}", commit.intention(), commit.message()),
+                        hash: CommitInterface::hash(&commit).to_string(),
                     })
                     .collect();
                 Ok(commits)
             }
         }
 
-        fn fetch_all_commits(&self) -> Result<Vec<ConventionalCommit>, Box<dyn Error>> {
+        fn fetch_all_commits(&self) -> Result<Vec<Commit>, Box<dyn Error>> {
             if self.commit_fetching_fails {
                 Err(Box::new(MockError))
             } else {
-                Ok(self.commits.clone())
+                let commits = self
+                    .commits
+                    .clone()
+                    .iter()
+                    .map(|commit| Commit {
+                        message: format!("{} {}", commit.intention(), commit.message()),
+                        hash: CommitInterface::hash(commit).to_string(),
+                    })
+                    .collect::<Vec<Commit>>();
+                Ok(commits)
             }
         }
 
@@ -369,9 +381,9 @@ mod changes_tests {
     }
 
     impl MockedRepository {
-        fn from_commits(commits: Vec<&str>) -> Self {
+        fn from_commits(commits: Vec<GitmojiCommit>) -> Self {
             Self {
-                commits: convert(commits),
+                commits,
                 commit_fetching_fails: false,
                 commit_with_latest_tag: None,
                 latest_version_tag: None,
@@ -424,7 +436,12 @@ mod changes_tests {
     #[test]
     fn creating_from_only_major_conventional_commits() {
         // Given
-        let commit_messages = vec!["💥 introduce breaking changes"];
+        let commit_messages = vec![GitmojiCommit::new(
+            "introduce breaking changes".to_string(),
+            "".to_string(),
+            Gitmoji::Boom,
+            "".to_string(),
+        )];
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
@@ -432,7 +449,7 @@ mod changes_tests {
 
         // Then
         let expected_result = Changes {
-            major: convert(commit_messages),
+            major: commit_messages,
             minor: Vec::new(),
             patch: Vec::new(),
             other: Vec::new(),
@@ -444,15 +461,60 @@ mod changes_tests {
     fn creating_from_only_minor_conventional_commits() {
         // Given
         let commit_messages = vec![
-            ":sparkles: introduce new feature",
-            ":children_crossing: improve user experience / usability",
-            "💄 add or update the UI and style files",
-            ":iphone: work on responsive design",
-            ":egg: add or update an easter egg",
-            ":chart_with_upwards_trend: add or update analytics or track code",
-            ":heavy_plus_sign: add a dependency",
-            ":heavy_minus_sign: remove a dependency",
-            ":passport_control: work on code related to authorization, roles and permissions",
+            GitmojiCommit::new(
+                "introduce new feature".to_string(),
+                "".to_string(),
+                Gitmoji::Sparkles,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "improve user experience / usability".to_string(),
+                "".to_string(),
+                Gitmoji::ChildrenCrossing,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update the UI and style files".to_string(),
+                "".to_string(),
+                Gitmoji::Lipstick,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "work on responsive design".to_string(),
+                "".to_string(),
+                Gitmoji::Iphone,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update an easter egg".to_string(),
+                "".to_string(),
+                Gitmoji::Egg,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update analytics or track code".to_string(),
+                "".to_string(),
+                Gitmoji::ChartWithUpwardsTrend,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add a dependency".to_string(),
+                "".to_string(),
+                Gitmoji::HeavyPlusSign,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "remove a dependency".to_string(),
+                "".to_string(),
+                Gitmoji::HeavyMinusSign,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "work on code related to authorization, roles and permissions".to_string(),
+                "".to_string(),
+                Gitmoji::PassportControl,
+                "".to_string(),
+            ),
         ];
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
@@ -462,7 +524,7 @@ mod changes_tests {
         // Then
         let expected_result = Changes {
             major: Vec::new(),
-            minor: convert(commit_messages),
+            minor: commit_messages,
             patch: Vec::new(),
             other: Vec::new(),
         };
@@ -473,48 +535,258 @@ mod changes_tests {
     fn creating_from_only_patch_conventional_commits() {
         // Given
         let commit_messages = vec![
-            ":art: improve structure / format of the code",
-            ":ambulance: critical hotfix",
-            ":lock: fix security or privacy issues",
-            "🐛 fix a bug",
-            ":zap: improve performance",
-            ":goal_net: catch errors",
-            ":alien: update code due to external API changes",
-            ":wheelchair: improve accessibility",
-            ":speech_balloon: add or update text and literals",
-            ":mag: improve SEO",
-            ":fire: remove code or files",
-            ":white_check_mark: add, update, or pass tests",
-            ":closed_lock_with_key: add or update secrets",
-            ":rotating_light: fix compiler / linter warnings",
-            ":green_heart: fix CI build",
-            ":arrow_down: downgrade dependencies",
-            ":arrow_up: upgrade dependencies",
-            ":pushpin: pin dependencies to specific versions",
-            ":construction_worker: add or update CI build system",
-            ":recycle: refactor code",
-            ":wrench: add or update configuration files",
-            ":hammer: add or update development scripts",
-            ":globe_with_meridians: internationalization and localization",
-            ":package: add or update compiled files or packages",
-            ":truck: move or rename resources (e.g.: files, paths, routes",
-            ":bento: add or update assets",
-            ":card_file_box: perform database related changes",
-            ":loud_sound: add or update logs",
-            ":mute: remove logs",
-            ":building_construction: make architectural changes",
-            ":camera_flash: add or update snapshots",
-            ":label: add or update types",
-            ":seedling: add or update seed files",
-            ":triangular_flag_on_post: add, update, or remove feature flags",
-            ":dizzy: add or update animations an transitions",
-            ":adhesive_bandage: simple fix for a non critical issue",
-            ":monocle_face: data exploration / inspection",
-            ":necktie: add or update business logic",
-            ":stethoscope: add or update healthcheck",
-            ":technologist: improve developer experience",
-            ":thread: add or update code related to multithreading or concurrency",
-            ":safety_vest: add or update code related to validation",
+            GitmojiCommit::new(
+                "improve structure / format of the code".to_string(),
+                "".to_string(),
+                Gitmoji::Art,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "critical hotfix".to_string(),
+                "".to_string(),
+                Gitmoji::Ambulance,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "fix security or privacy issues".to_string(),
+                "".to_string(),
+                Gitmoji::Lock,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "fix a bug".to_string(),
+                "".to_string(),
+                Gitmoji::Bug,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "improve performance".to_string(),
+                "".to_string(),
+                Gitmoji::Zap,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "catch errors".to_string(),
+                "".to_string(),
+                Gitmoji::GoalNet,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "update code due to external API changes".to_string(),
+                "".to_string(),
+                Gitmoji::Alien,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "improve accessibility".to_string(),
+                "".to_string(),
+                Gitmoji::Wheelchair,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update text and literals".to_string(),
+                "".to_string(),
+                Gitmoji::SpeechBalloon,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "improve SEO".to_string(),
+                "".to_string(),
+                Gitmoji::Mag,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "remove code or files".to_string(),
+                "".to_string(),
+                Gitmoji::Fire,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add, update, or pass tests".to_string(),
+                "".to_string(),
+                Gitmoji::WhiteCheckMark,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update secrets".to_string(),
+                "".to_string(),
+                Gitmoji::ClosedLockWithKey,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "fix compiler / linter warnings".to_string(),
+                "".to_string(),
+                Gitmoji::RotatingLight,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "fix CI build".to_string(),
+                "".to_string(),
+                Gitmoji::GreenHeart,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "downgrade dependencies".to_string(),
+                "".to_string(),
+                Gitmoji::ArrowDown,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "upgrade dependencies".to_string(),
+                "".to_string(),
+                Gitmoji::ArrowUp,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "pin dependencies to specific versions".to_string(),
+                "".to_string(),
+                Gitmoji::Pushpin,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update CI build system".to_string(),
+                "".to_string(),
+                Gitmoji::ConstructionWorker,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "refactor code".to_string(),
+                "".to_string(),
+                Gitmoji::Recycle,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update configuration files".to_string(),
+                "".to_string(),
+                Gitmoji::Wrench,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update development scripts".to_string(),
+                "".to_string(),
+                Gitmoji::Hammer,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "internationalization and localization".to_string(),
+                "".to_string(),
+                Gitmoji::GlobeWithMeridians,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update compiled files or packages".to_string(),
+                "".to_string(),
+                Gitmoji::Package,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "move or rename resources (e.g.: files, paths, routes".to_string(),
+                "".to_string(),
+                Gitmoji::Truck,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update assets".to_string(),
+                "".to_string(),
+                Gitmoji::Bento,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "perform database related changes".to_string(),
+                "".to_string(),
+                Gitmoji::CardFileBox,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update logs".to_string(),
+                "".to_string(),
+                Gitmoji::LoudSound,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "remove logs".to_string(),
+                "".to_string(),
+                Gitmoji::Mute,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "make architectural changes".to_string(),
+                "".to_string(),
+                Gitmoji::BuildingConstruction,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update snapshots".to_string(),
+                "".to_string(),
+                Gitmoji::CameraFlash,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update types".to_string(),
+                "".to_string(),
+                Gitmoji::Label,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update seed files".to_string(),
+                "".to_string(),
+                Gitmoji::Seedling,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add, update, or remove feature flags".to_string(),
+                "".to_string(),
+                Gitmoji::TriangularFlagOnPost,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update animations an transitions".to_string(),
+                "".to_string(),
+                Gitmoji::Dizzy,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "simple fix for a non critical issue".to_string(),
+                "".to_string(),
+                Gitmoji::AdhesiveBandage,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "data exploration / inspection".to_string(),
+                "".to_string(),
+                Gitmoji::MonocleFace,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update business logic".to_string(),
+                "".to_string(),
+                Gitmoji::Necktie,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update healthcheck".to_string(),
+                "".to_string(),
+                Gitmoji::Stethoscope,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "improve developer experience".to_string(),
+                "".to_string(),
+                Gitmoji::Technologist,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update code related to multithreading or concurrency".to_string(),
+                "".to_string(),
+                Gitmoji::Thread,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update code related to validation".to_string(),
+                "".to_string(),
+                Gitmoji::SafetyVest,
+                "".to_string(),
+            ),
         ];
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
@@ -525,7 +797,7 @@ mod changes_tests {
         let expected_result = Changes {
             major: Vec::new(),
             minor: Vec::new(),
-            patch: convert(commit_messages),
+            patch: commit_messages,
             other: Vec::new(),
         };
         assert_eq!(result, expected_result);
@@ -534,27 +806,132 @@ mod changes_tests {
     #[test]
     fn creating_from_only_other_conventional_commits() {
         let commit_messages = vec![
-            ":memo: add or update documentation",
-            ":rocket: deploy stuff",
-            ":tada: begin a project",
-            ":bookmark: release / version tags",
-            ":construction: work in progress",
-            ":pencil2: fix typos",
-            ":poop: write bad code that needs to be improved",
-            ":rewind: revert changes",
-            ":twisted_rightwards_arrows: merge branches",
-            ":page_facing_up: add or update license",
-            ":bulb: add or update comments in source code",
-            "🍻 write code drunkenly",
-            ":bust_in_silhouette: add or update contributor(s)",
-            ":clown_face: mock things",
-            ":see_no_evil: add or update a .gitignore file",
-            ":alembic: perform experiments",
-            ":wastebasket: deprecate code that needs to be cleaned up",
-            ":coffin: remove dead code",
-            ":test_tube: add a failing test",
-            ":bricks: infrastructure related changes",
-            ":money_with_wings: add sponsorship or money related infrastructure",
+            GitmojiCommit::new(
+                "add or update documentation".to_string(),
+                "".to_string(),
+                Gitmoji::Memo,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "deploy stuff".to_string(),
+                "".to_string(),
+                Gitmoji::Rocket,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "begin a project".to_string(),
+                "".to_string(),
+                Gitmoji::Tada,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "release / version tags".to_string(),
+                "".to_string(),
+                Gitmoji::Bookmark,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "work in progress".to_string(),
+                "".to_string(),
+                Gitmoji::Construction,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "fix typos".to_string(),
+                "".to_string(),
+                Gitmoji::Pencil2,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "write bad code that needs to be improved".to_string(),
+                "".to_string(),
+                Gitmoji::Poop,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "revert changes".to_string(),
+                "".to_string(),
+                Gitmoji::Rewind,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "merge branches".to_string(),
+                "".to_string(),
+                Gitmoji::TwistedRightwardsArrows,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update license".to_string(),
+                "".to_string(),
+                Gitmoji::PageFacingUp,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update comments in source code".to_string(),
+                "".to_string(),
+                Gitmoji::Bulb,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "write code drunkenly".to_string(),
+                "".to_string(),
+                Gitmoji::Beers,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update contributor(s)".to_string(),
+                "".to_string(),
+                Gitmoji::BustInSilhouette,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "mock things".to_string(),
+                "".to_string(),
+                Gitmoji::ClownFace,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update a .gitignore file".to_string(),
+                "".to_string(),
+                Gitmoji::SeeNoEvil,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "perform experiments".to_string(),
+                "".to_string(),
+                Gitmoji::Alembic,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "deprecate code that needs to be cleaned up".to_string(),
+                "".to_string(),
+                Gitmoji::Wastebasket,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "remove dead code".to_string(),
+                "".to_string(),
+                Gitmoji::Coffin,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add a failing test".to_string(),
+                "".to_string(),
+                Gitmoji::TestTube,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "infrastructure related changes".to_string(),
+                "".to_string(),
+                Gitmoji::Bricks,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add sponsorship or money related infrastructure".to_string(),
+                "".to_string(),
+                Gitmoji::MoneyWithWings,
+                "".to_string(),
+            ),
         ];
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
@@ -566,7 +943,7 @@ mod changes_tests {
             major: Vec::new(),
             minor: Vec::new(),
             patch: Vec::new(),
-            other: convert(commit_messages),
+            other: commit_messages,
         };
         assert_eq!(result, expected_result);
     }
@@ -575,17 +952,37 @@ mod changes_tests {
     fn creating_from_repo_with_tags() {
         // Given
         let commit_messages = vec![
-            "💥 introduce breaking changes",
-            ":sparkles: introduce new feature",
-            ":money_with_wings: add sponsorship or money related infrastructure",
-            ":memo: add or update documentation",
+            GitmojiCommit::new(
+                "introduce breaking changes".to_string(),
+                "".to_string(),
+                Gitmoji::Boom,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "introduce new feature".to_string(),
+                "".to_string(),
+                Gitmoji::Sparkles,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add sponsorship or money related infrastructure".to_string(),
+                "".to_string(),
+                Gitmoji::MoneyWithWings,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update documentation".to_string(),
+                "".to_string(),
+                Gitmoji::Memo,
+                "".to_string(),
+            ),
         ];
         let mut repository = MockedRepository::from_commits(commit_messages.clone());
         repository.latest_version_tag = Some(VersionTag {
             version: Version::new(1, 0, 0),
             commit_oid: Oid::zero(),
         });
-        repository.commit_with_latest_tag = Some(commit_messages[1].into());
+        repository.commit_with_latest_tag = Some(commit_messages[1].clone());
 
         // When
         let result = Changes::from_repo(&repository).unwrap();
@@ -595,7 +992,7 @@ mod changes_tests {
             major: Vec::new(),
             minor: Vec::new(),
             patch: Vec::new(),
-            other: convert(commit_messages[2..].to_vec()),
+            other: commit_messages[2..].to_vec(),
         };
         assert_eq!(result, expected_result);
     }
@@ -604,15 +1001,60 @@ mod changes_tests {
     fn error_during_fetching_latest_tag() {
         // Given
         let commit_messages = vec![
-            ":sparkles: introduce new feature",
-            ":children_crossing: improve user experience / usability",
-            "💄 add or update the UI and style files",
-            ":iphone: work on responsive design",
-            ":egg: add or update an easter egg",
-            ":chart_with_upwards_trend: add or update analytics or track code",
-            ":heavy_plus_sign: add a dependency",
-            ":heavy_minus_sign: remove a dependency",
-            ":passport_control: work on code related to authorization, roles and permissions",
+            GitmojiCommit::new(
+                "introduce new feature".to_string(),
+                "".to_string(),
+                Gitmoji::Sparkles,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "improve user experience / usability".to_string(),
+                "".to_string(),
+                Gitmoji::ChildrenCrossing,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update the UI and style files".to_string(),
+                "".to_string(),
+                Gitmoji::Lipstick,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "work on responsive design".to_string(),
+                "".to_string(),
+                Gitmoji::Iphone,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update an easter egg".to_string(),
+                "".to_string(),
+                Gitmoji::Egg,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add or update analytics or track code".to_string(),
+                "".to_string(),
+                Gitmoji::ChartWithUpwardsTrend,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "add a dependency".to_string(),
+                "".to_string(),
+                Gitmoji::HeavyPlusSign,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "remove a dependency".to_string(),
+                "".to_string(),
+                Gitmoji::HeavyMinusSign,
+                "".to_string(),
+            ),
+            GitmojiCommit::new(
+                "work on code related to authorization, roles and permissions".to_string(),
+                "".to_string(),
+                Gitmoji::PassportControl,
+                "".to_string(),
+            ),
         ];
         let mut repository = MockedRepository::from_commits(commit_messages.clone());
         repository.tag_fetching_fails = true;
@@ -637,11 +1079,14 @@ mod changes_tests {
         let result = Changes::try_from(&repository).unwrap();
 
         // Then
+        let hash = commit.id().to_string();
         let expected_result = Changes {
-            major: vec![ConventionalCommit {
-                message: commit.message().unwrap().to_string(),
-                hash: commit.id().to_string(),
-            }],
+            major: vec![GitmojiCommit::new(
+                "introduce breaking changes".to_string(),
+                hash,
+                Gitmoji::Boom,
+                "".to_string(),
+            )],
             minor: Vec::new(),
             patch: Vec::new(),
             other: Vec::new(),
@@ -653,7 +1098,8 @@ mod changes_tests {
 #[cfg(test)]
 mod evaluate_changes_tests {
     use crate::changes::{Changes, SemanticVersionAction};
-    use crate::repo::ConventionalCommit;
+    use crate::repo::prelude::{Gitmoji, GitmojiCommit};
+    use Default;
 
     #[test]
     fn has_no_changes() {
@@ -662,10 +1108,12 @@ mod evaluate_changes_tests {
             major: Vec::new(),
             minor: Vec::new(),
             patch: Vec::new(),
-            other: vec![ConventionalCommit {
-                message: "other commit".to_string(),
-                hash: "".to_string(),
-            }],
+            other: vec![GitmojiCommit::new(
+                "other".to_string(),
+                Default::default(),
+                Gitmoji::Memo,
+                Default::default(),
+            )],
         };
 
         // When
@@ -681,14 +1129,18 @@ mod evaluate_changes_tests {
         let changes = Changes {
             major: Vec::new(),
             minor: Vec::new(),
-            patch: vec![ConventionalCommit {
-                message: "patch commit".to_string(),
-                hash: "".to_string(),
-            }],
-            other: vec![ConventionalCommit {
-                message: "other commit".to_string(),
-                hash: "".to_string(),
-            }],
+            patch: vec![GitmojiCommit::new(
+                "patch".to_string(),
+                Default::default(),
+                Gitmoji::Bug,
+                Default::default(),
+            )],
+            other: vec![GitmojiCommit::new(
+                "other".to_string(),
+                Default::default(),
+                Gitmoji::Memo,
+                Default::default(),
+            )],
         };
 
         // When
@@ -703,18 +1155,24 @@ mod evaluate_changes_tests {
         // Given
         let changes = Changes {
             major: Vec::new(),
-            minor: vec![ConventionalCommit {
-                message: "minor commit".to_string(),
-                hash: "".to_string(),
-            }],
-            patch: vec![ConventionalCommit {
-                message: "patch commit".to_string(),
-                hash: "".to_string(),
-            }],
-            other: vec![ConventionalCommit {
-                message: "other commit".to_string(),
-                hash: "".to_string(),
-            }],
+            minor: vec![GitmojiCommit::new(
+                "minor".to_string(),
+                Default::default(),
+                Gitmoji::Sparkles,
+                Default::default(),
+            )],
+            patch: vec![GitmojiCommit::new(
+                "patch".to_string(),
+                Default::default(),
+                Gitmoji::Bug,
+                Default::default(),
+            )],
+            other: vec![GitmojiCommit::new(
+                "other".to_string(),
+                Default::default(),
+                Gitmoji::Memo,
+                Default::default(),
+            )],
         };
 
         // When
@@ -728,22 +1186,30 @@ mod evaluate_changes_tests {
     fn has_major_changes() {
         // Given
         let changes = Changes {
-            major: vec![ConventionalCommit {
-                message: "major commit".to_string(),
-                hash: "".to_string(),
-            }],
-            minor: vec![ConventionalCommit {
-                message: "minor commit".to_string(),
-                hash: "".to_string(),
-            }],
-            patch: vec![ConventionalCommit {
-                message: "patch commit".to_string(),
-                hash: "".to_string(),
-            }],
-            other: vec![ConventionalCommit {
-                message: "other commit".to_string(),
-                hash: "".to_string(),
-            }],
+            major: vec![GitmojiCommit::new(
+                "major".to_string(),
+                Default::default(),
+                Gitmoji::Boom,
+                Default::default(),
+            )],
+            minor: vec![GitmojiCommit::new(
+                "minor".to_string(),
+                Default::default(),
+                Gitmoji::Sparkles,
+                Default::default(),
+            )],
+            patch: vec![GitmojiCommit::new(
+                "patch".to_string(),
+                Default::default(),
+                Gitmoji::Bug,
+                Default::default(),
+            )],
+            other: vec![GitmojiCommit::new(
+                "other".to_string(),
+                Default::default(),
+                Gitmoji::Memo,
+                Default::default(),
+            )],
         };
 
         // When

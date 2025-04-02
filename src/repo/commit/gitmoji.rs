@@ -1,29 +1,31 @@
-use git2::Commit;
+use crate::repo::commit::{Commit, CommitError, CommitInterface};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use thiserror::Error;
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
-struct GitmojiCommit {
-    message: String,
+pub struct GitmojiCommit {
+    pub message: String,
     hash: String,
     intention: Gitmoji,
     scope: String,
 }
 
-#[derive(Debug, Error, PartialEq)]
-pub enum GitmojiCommitError {
-    #[error("Commit does not have a message")]
-    MissingMessage,
-    #[error("Commit message does not contain a valid Gitmoji intention")]
-    MissingIntention,
+impl GitmojiCommit {
+    pub fn new(message: String, hash: String, intention: Gitmoji, scope: String) -> Self {
+        Self {
+            message,
+            hash,
+            intention,
+            scope,
+        }
+    }
 }
 
-impl TryFrom<Commit<'_>> for GitmojiCommit {
-    type Error = GitmojiCommitError;
+impl TryFrom<git2::Commit<'_>> for GitmojiCommit {
+    type Error = CommitError;
 
-    fn try_from(value: Commit<'_>) -> Result<Self, Self::Error> {
-        let message = value.message().ok_or(GitmojiCommitError::MissingMessage)?;
+    fn try_from(value: git2::Commit) -> Result<Self, Self::Error> {
+        let message = value.message().unwrap_or("");
         let intention = Gitmoji::try_from(message)?;
 
         let message = message
@@ -33,6 +35,54 @@ impl TryFrom<Commit<'_>> for GitmojiCommit {
             .to_string();
 
         let hash = value.id().to_string();
+
+        Ok(Self {
+            message,
+            hash,
+            intention,
+            scope: "".to_string(),
+        })
+    }
+}
+
+impl TryFrom<Commit> for GitmojiCommit {
+    type Error = CommitError;
+
+    fn try_from(value: Commit) -> Result<Self, Self::Error> {
+        let message = value.message.as_str();
+        let intention = Gitmoji::try_from(message)?;
+
+        let message = message
+            .replace(intention.as_utf(), "")
+            .replace(intention.as_shortcode(), "")
+            .trim_start()
+            .to_string();
+
+        let hash = value.hash;
+
+        Ok(Self {
+            message,
+            hash,
+            intention,
+            scope: "".to_string(),
+        })
+    }
+}
+
+impl TryFrom<&Commit> for GitmojiCommit {
+    type Error = CommitError;
+
+    fn try_from(value: &Commit) -> Result<Self, Self::Error> {
+        let message = value.message.as_str();
+        let intention = Gitmoji::try_from(message)?;
+
+        let message = message
+            .replace(intention.as_utf(), "")
+            .replace(intention.as_shortcode(), "")
+            .trim_start()
+            .to_string();
+
+        let hash = value.hash.clone();
 
         Ok(Self {
             message,
@@ -56,6 +106,22 @@ impl Display for GitmojiCommit {
             self.message.trim_end(),
             short_hash
         )
+    }
+}
+
+impl CommitInterface for GitmojiCommit {
+    type Error = CommitError;
+
+    fn message(&self) -> &str {
+        self.message.as_str()
+    }
+
+    fn hash(&self) -> &str {
+        self.hash.as_str()
+    }
+
+    fn intention(&self) -> &Gitmoji {
+        &self.intention
     }
 }
 
@@ -118,7 +184,7 @@ mod gitmoji_commit_tests {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash, Copy)]
-enum Gitmoji {
+pub enum Gitmoji {
     Boom,
     Sparkles,
     ChildrenCrossing,
@@ -311,7 +377,7 @@ impl Gitmoji {
 }
 
 impl TryFrom<&str> for Gitmoji {
-    type Error = GitmojiCommitError;
+    type Error = CommitError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let intention: Vec<Gitmoji> = Gitmoji::gitmoji_map()
@@ -323,7 +389,7 @@ impl TryFrom<&str> for Gitmoji {
             .collect();
         match intention.first() {
             Some(intention) => Ok(*intention),
-            None => Err(GitmojiCommitError::MissingIntention),
+            None => Err(CommitError::MissingIntention),
         }
     }
 }
@@ -349,7 +415,7 @@ impl Emoji {
 
 #[cfg(test)]
 mod test_gitmoji {
-    use crate::repo::commit::gitmoji::{Gitmoji, GitmojiCommitError};
+    use crate::repo::commit::gitmoji::{CommitError, Gitmoji};
 
     #[test]
     fn display_formatting() {
@@ -426,6 +492,6 @@ mod test_gitmoji {
         let result = Gitmoji::try_from(str);
 
         // Then
-        assert_eq!(result.unwrap_err(), GitmojiCommitError::MissingIntention);
+        assert_eq!(result.unwrap_err(), CommitError::MissingIntention);
     }
 }
