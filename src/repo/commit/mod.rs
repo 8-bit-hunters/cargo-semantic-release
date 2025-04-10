@@ -1,4 +1,4 @@
-pub use crate::repo::commit::gitmoji::{GitmojiCommit, Gitmoji};
+pub use crate::repo::commit::gitmoji::{Gitmoji, GitmojiCommit};
 use thiserror::Error;
 
 mod gitmoji;

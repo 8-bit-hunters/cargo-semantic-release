@@ -31,12 +31,12 @@ fn general_fetch_commits_until(
 
 #[cfg(test)]
 mod commit_fetcher_tests {
+    pub use crate::repo::prelude::CommitInterface;
     use crate::repo::prelude::RepositoryExtension;
     use crate::repo::Commit;
     use crate::test_util::repo_init;
     pub use crate::test_util::RepositoryTestExtensions;
     use std::collections::HashSet;
-    pub use crate::repo::prelude::CommitInterface;
 
     #[doc(hidden)]
     /// Compare the result of `get_commits` function with the expected commit messages.
