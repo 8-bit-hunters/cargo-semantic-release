@@ -235,7 +235,7 @@ impl<T: CommitInterface + Clone + Display> Display for Changes<T> {
     ///
     /// Example output:
     /// ```shell
-    ///major:
+    /// major:
     ///         :boom: Introduce breaking change
     ///
     /// minor:
@@ -287,7 +287,7 @@ impl Display for SemanticVersionAction {
 fn convert_to_string_vector<T: Display>(commits: Vec<T>) -> Vec<String> {
     commits
         .into_iter()
-        .map(|commit| format!("{commit}"))
+        .map(|commit| format!("{commit}\n"))
         .collect::<Vec<String>>()
 }
 
