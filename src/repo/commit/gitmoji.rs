@@ -350,17 +350,14 @@ impl TryFrom<&str> for Gitmoji {
     type Error = CommitError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let intention: Vec<Gitmoji> = Gitmoji::gitmoji_map()
+        let trimmed = value.trim_start();
+        Gitmoji::gitmoji_map()
             .iter()
-            .filter(|(_gitmoji, emoji)| {
-                value.contains(emoji.utf) || value.contains(emoji.shortcode)
+            .find(|(_gitmoji, emoji)| {
+                trimmed.starts_with(emoji.utf) || trimmed.starts_with(emoji.shortcode)
             })
             .map(|(gitmoji, _emoji)| *gitmoji)
-            .collect();
-        match intention.first() {
-            Some(intention) => Ok(*intention),
-            None => Err(CommitError::MissingIntention),
-        }
+            .ok_or(CommitError::MissingIntention)
     }
 }
 
@@ -442,9 +439,21 @@ mod test_gitmoji {
     }
 
     #[test]
-    fn test_from_str_with_intention() {
+    fn test_from_str_with_leading_shortcode_intention() {
         // Given
-        let str = "hello :boom:";
+        let str = ":boom: hello";
+
+        // When
+        let result = Gitmoji::try_from(str).expect("Failed to parse");
+
+        // Then
+        assert_eq!(result, Gitmoji::Boom);
+    }
+
+    #[test]
+    fn test_from_str_with_leading_utf_intention() {
+        // Given
+        let str = "💥 hello";
 
         // When
         let result = Gitmoji::try_from(str).expect("Failed to parse");
@@ -463,5 +472,29 @@ mod test_gitmoji {
 
         // Then
         assert_eq!(result.unwrap_err(), CommitError::MissingIntention);
+    }
+
+    #[test]
+    fn test_from_str_ignores_intention_mentioned_only_in_the_body() {
+        // Given
+        let str = "hello, this mentions :boom: in the body";
+
+        // When
+        let result = Gitmoji::try_from(str);
+
+        // Then
+        assert_eq!(result.unwrap_err(), CommitError::MissingIntention);
+    }
+
+    #[test]
+    fn test_from_str_picks_leading_intention_when_another_is_mentioned_in_the_body() {
+        // Given
+        let str = ":bug: fix build, mention :sparkles: in body";
+
+        // When
+        let result = Gitmoji::try_from(str).expect("Failed to parse");
+
+        // Then
+        assert_eq!(result, Gitmoji::Bug);
     }
 }
