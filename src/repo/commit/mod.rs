@@ -13,8 +13,6 @@ pub trait CommitInterface {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum CommitError {
-    #[error("Commit does not have a message")]
-    MissingMessage,
     #[error("Commit message does not contain a valid Gitmoji intention")]
     MissingIntention,
 }
