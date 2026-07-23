@@ -1099,7 +1099,6 @@ mod changes_tests {
 mod evaluate_changes_tests {
     use crate::changes::{Changes, SemanticVersionAction};
     use crate::repo::prelude::{Gitmoji, GitmojiCommit};
-    use Default;
 
     #[test]
     fn has_no_changes() {
