@@ -463,6 +463,18 @@ mod test_gitmoji {
     }
 
     #[test]
+    fn test_from_str_with_leading_whitespace_before_intention() {
+        // Given
+        let str = "   :boom: Hello there";
+
+        // When
+        let result = Gitmoji::try_from(str).expect("Failed to parse");
+
+        // Then
+        assert_eq!(result, Gitmoji::Boom);
+    }
+
+    #[test]
     fn test_from_str_without_intention() {
         // Given
         let str = "hello";
