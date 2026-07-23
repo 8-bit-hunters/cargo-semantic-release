@@ -19,13 +19,8 @@ impl GitmojiCommit {
             scope,
         }
     }
-}
 
-impl TryFrom<git2::Commit<'_>> for GitmojiCommit {
-    type Error = CommitError;
-
-    fn try_from(value: git2::Commit) -> Result<Self, Self::Error> {
-        let message = value.message().unwrap_or("");
+    fn parse(message: &str, hash: String) -> Result<Self, CommitError> {
         let intention = Gitmoji::try_from(message)?;
 
         let message = message
@@ -34,14 +29,21 @@ impl TryFrom<git2::Commit<'_>> for GitmojiCommit {
             .trim_start()
             .to_string();
 
-        let hash = value.id().to_string();
-
         Ok(Self {
             message,
             hash,
             intention,
             scope: "".to_string(),
         })
+    }
+}
+
+impl TryFrom<git2::Commit<'_>> for GitmojiCommit {
+    type Error = CommitError;
+
+    fn try_from(value: git2::Commit) -> Result<Self, Self::Error> {
+        let hash = value.id().to_string();
+        Self::parse(value.message().unwrap_or(""), hash)
     }
 }
 
@@ -49,23 +51,7 @@ impl TryFrom<Commit> for GitmojiCommit {
     type Error = CommitError;
 
     fn try_from(value: Commit) -> Result<Self, Self::Error> {
-        let message = value.message.as_str();
-        let intention = Gitmoji::try_from(message)?;
-
-        let message = message
-            .replace(intention.as_utf(), "")
-            .replace(intention.as_shortcode(), "")
-            .trim_start()
-            .to_string();
-
-        let hash = value.hash;
-
-        Ok(Self {
-            message,
-            hash,
-            intention,
-            scope: "".to_string(),
-        })
+        Self::parse(&value.message, value.hash)
     }
 }
 
@@ -73,23 +59,7 @@ impl TryFrom<&Commit> for GitmojiCommit {
     type Error = CommitError;
 
     fn try_from(value: &Commit) -> Result<Self, Self::Error> {
-        let message = value.message.as_str();
-        let intention = Gitmoji::try_from(message)?;
-
-        let message = message
-            .replace(intention.as_utf(), "")
-            .replace(intention.as_shortcode(), "")
-            .trim_start()
-            .to_string();
-
-        let hash = value.hash.clone();
-
-        Ok(Self {
-            message,
-            hash,
-            intention,
-            scope: "".to_string(),
-        })
+        Self::parse(&value.message, value.hash.clone())
     }
 }
 
