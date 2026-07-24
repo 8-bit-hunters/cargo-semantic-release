@@ -1,8 +1,9 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::Changes;
+use cargo_semantic_release::{Changes, RepositoryExtension};
 use clap::Parser;
 use clap_cargo::style;
 use git2::Repository;
+use semver::Version;
 use std::{env, process};
 
 #[derive(Parser)]
@@ -44,6 +45,15 @@ fn main() {
         process::exit(1);
     });
 
+    let latest_version_tag = git_repo.get_latest_version_tag().unwrap_or_else(|error| {
+        eprintln!("Error during fetching the latest version tag:\n\t{error}");
+        process::exit(1);
+    });
+    let current_version = latest_version_tag
+        .map(|tag| tag.version)
+        .unwrap_or_else(|| Version::new(0, 0, 0));
+    println!("Current version: {current_version}");
+
     let changes = Changes::try_from(&git_repo).unwrap_or_else(|error| {
         eprintln!("Error during fetching changes from repository:\n\t{error}");
         process::exit(1);
@@ -52,4 +62,7 @@ fn main() {
 
     let action = changes.define_action_for_semantic_version();
     println!("Action for semantic version ➡️ {action}");
+
+    let updated_version = action.apply(&current_version);
+    println!("Updated version: {updated_version}");
 }

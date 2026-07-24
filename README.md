@@ -33,7 +33,8 @@ cargo semantic-release
 ```
 
 This will print out the `major`, `minor`, `patch` related changes and the `other` changes.
-Also, it will indicate the recommended action for the semantic version.
+Also, it will indicate the recommended action for the semantic version, and the resulting new
+version number.
 
 ## Library
 
