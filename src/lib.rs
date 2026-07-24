@@ -5,3 +5,4 @@ pub mod test_util;
 
 pub use crate::changes::Changes;
 pub use crate::changes::SemanticVersionAction;
+pub use crate::repo::prelude::RepositoryExtension;
