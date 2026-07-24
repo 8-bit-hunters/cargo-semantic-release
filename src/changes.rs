@@ -1,5 +1,6 @@
 use crate::repo::prelude::*;
 use git2::Repository;
+use semver::{BuildMetadata, Prerelease, Version};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Display;
@@ -270,6 +271,38 @@ pub enum SemanticVersionAction {
     IncrementMinor,
     IncrementPatch,
     Keep,
+}
+
+impl SemanticVersionAction {
+    /// Apply the action to a given [`Version`], returning the resulting version.
+    ///
+    /// Incrementing a segment resets the less significant segments to `0` and clears
+    /// any pre-release and build metadata, per the semantic versioning spec.
+    pub fn apply(&self, version: &Version) -> Version {
+        match self {
+            SemanticVersionAction::IncrementMajor => Version {
+                major: version.major + 1,
+                minor: 0,
+                patch: 0,
+                pre: Prerelease::EMPTY,
+                build: BuildMetadata::EMPTY,
+            },
+            SemanticVersionAction::IncrementMinor => Version {
+                minor: version.minor + 1,
+                patch: 0,
+                pre: Prerelease::EMPTY,
+                build: BuildMetadata::EMPTY,
+                ..version.clone()
+            },
+            SemanticVersionAction::IncrementPatch => Version {
+                patch: version.patch + 1,
+                pre: Prerelease::EMPTY,
+                build: BuildMetadata::EMPTY,
+                ..version.clone()
+            },
+            SemanticVersionAction::Keep => version.clone(),
+        }
+    }
 }
 
 impl Display for SemanticVersionAction {
@@ -1092,6 +1125,96 @@ mod changes_tests {
             other: Vec::new(),
         };
         assert_eq!(result, expected_result);
+    }
+}
+
+#[cfg(test)]
+mod semantic_version_action_tests {
+    use crate::changes::SemanticVersionAction;
+    use semver::Version;
+
+    #[test]
+    fn increment_major_resets_minor_and_patch() {
+        // Given
+        let version = Version::parse("1.2.3").unwrap();
+
+        // When
+        let result = SemanticVersionAction::IncrementMajor.apply(&version);
+
+        // Then
+        assert_eq!(result, Version::new(2, 0, 0));
+    }
+
+    #[test]
+    fn increment_major_clears_prerelease_and_build_metadata() {
+        // Given
+        let version = Version::parse("1.2.3-beta.1+build5").unwrap();
+
+        // When
+        let result = SemanticVersionAction::IncrementMajor.apply(&version);
+
+        // Then
+        assert_eq!(result, Version::new(2, 0, 0));
+    }
+
+    #[test]
+    fn increment_minor_resets_patch_and_keeps_major() {
+        // Given
+        let version = Version::parse("1.2.3").unwrap();
+
+        // When
+        let result = SemanticVersionAction::IncrementMinor.apply(&version);
+
+        // Then
+        assert_eq!(result, Version::new(1, 3, 0));
+    }
+
+    #[test]
+    fn increment_minor_clears_prerelease_and_build_metadata() {
+        // Given
+        let version = Version::parse("1.2.3-rc.1+build5").unwrap();
+
+        // When
+        let result = SemanticVersionAction::IncrementMinor.apply(&version);
+
+        // Then
+        assert_eq!(result, Version::new(1, 3, 0));
+    }
+
+    #[test]
+    fn increment_patch_keeps_major_and_minor() {
+        // Given
+        let version = Version::parse("1.2.3").unwrap();
+
+        // When
+        let result = SemanticVersionAction::IncrementPatch.apply(&version);
+
+        // Then
+        assert_eq!(result, Version::new(1, 2, 4));
+    }
+
+    #[test]
+    fn increment_patch_clears_prerelease_and_build_metadata() {
+        // Given
+        let version = Version::parse("1.2.3-rc.1+build5").unwrap();
+
+        // When
+        let result = SemanticVersionAction::IncrementPatch.apply(&version);
+
+        // Then
+        assert_eq!(result, Version::new(1, 2, 4));
+    }
+
+    #[test]
+    fn keep_returns_the_version_unchanged() {
+        // Given
+        let version = Version::parse("1.2.3-rc.1+build5").unwrap();
+
+        // When
+        let result = SemanticVersionAction::Keep.apply(&version);
+
+        // Then
+        assert_eq!(result, version);
     }
 }
 
