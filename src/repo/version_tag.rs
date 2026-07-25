@@ -4,10 +4,14 @@ use semver::Version;
 use std::error::Error;
 
 /// Get the latest version tag.
+///
+/// `tag_format` describes the shape of version tags, e.g. `"v{version}"`; the
+/// literal `{version}` placeholder marks where the semantic version sits.
 /// ## Returns
 /// [`VersionTag`] containing the latest version tag.
 pub fn get_latest_version_tag(
     repository: &Repository,
+    tag_format: &str,
 ) -> Result<Option<VersionTag>, Box<dyn Error>> {
     let references: Vec<Reference> = repository
         .references()?
@@ -27,8 +31,8 @@ pub fn get_latest_version_tag(
         })
         .filter_map(|(reference, object)| {
             Tag::from_object(object)
-                .and_then(|tag| VersionTag::from_annotated_tag(&tag))
-                .or_else(|| VersionTag::from_lightweight_tag(reference))
+                .and_then(|tag| VersionTag::from_annotated_tag(&tag, tag_format))
+                .or_else(|| VersionTag::from_lightweight_tag(reference, tag_format))
         })
         .collect();
 
@@ -67,15 +71,12 @@ impl VersionTag {
     ///
     /// ## Returns
     ///
-    /// `Option` which is `Some` if the version tag is valid, `None` otherwise.
-    fn from_annotated_tag(tag: &Tag) -> Option<Self> {
+    /// `Option` which is `Some` if the version tag matches `tag_format`, `None` otherwise.
+    fn from_annotated_tag(tag: &Tag, tag_format: &str) -> Option<Self> {
         let tag_name = tag.name().unwrap();
-        if !Self::is_valid_version_tag(tag_name) {
-            return None;
-        }
-        let version_number = tag_name.trim_start_matches("v");
+        let version = Self::parse_version_from_tag_name(tag_name, tag_format)?;
         Some(Self {
-            version: Version::parse(version_number).unwrap(),
+            version,
             commit_oid: tag.target_id(),
         })
     }
@@ -84,22 +85,31 @@ impl VersionTag {
     ///
     /// ## Returns
     ///
-    /// `Option` which is `Some` if the version tag is valid, `None` otherwise.
-    fn from_lightweight_tag(reference: &Reference) -> Option<Self> {
+    /// `Option` which is `Some` if the version tag matches `tag_format`, `None` otherwise.
+    fn from_lightweight_tag(reference: &Reference, tag_format: &str) -> Option<Self> {
         let tag_name = reference.shorthand().unwrap();
-        if !Self::is_valid_version_tag(tag_name) {
-            return None;
-        }
-        let version_number = tag_name.trim_start_matches("v");
+        let version = Self::parse_version_from_tag_name(tag_name, tag_format)?;
         Some(Self {
-            version: Version::parse(version_number).unwrap(),
+            version,
             commit_oid: reference.target().unwrap(),
         })
     }
 
-    fn is_valid_version_tag(tag_name: &str) -> bool {
-        let version_regex = Regex::new(r"^v\d+\.\d+\.\d+$").unwrap();
-        version_regex.is_match(tag_name)
+    /// Parse a [`Version`] out of `tag_name`, if it matches `tag_format`.
+    ///
+    /// `tag_format` must contain the literal `{version}` placeholder, e.g. `"v{version}"`;
+    /// everything before/after it is matched as a literal prefix/suffix.
+    fn parse_version_from_tag_name(tag_name: &str, tag_format: &str) -> Option<Version> {
+        let (prefix, suffix) = tag_format
+            .split_once("{version}")
+            .unwrap_or((tag_format, ""));
+        let pattern = format!(
+            "^{}(\\d+\\.\\d+\\.\\d+){}$",
+            regex::escape(prefix),
+            regex::escape(suffix)
+        );
+        let captures = Regex::new(&pattern).ok()?.captures(tag_name)?;
+        Version::parse(&captures[1]).ok()
     }
 }
 
@@ -116,7 +126,7 @@ mod version_tag_tests {
         let (_temp_dir, repository) = repo_init(None);
 
         // When
-        let result = repository.get_latest_version_tag().unwrap();
+        let result = repository.get_latest_version_tag("v{version}").unwrap();
 
         // Then
         assert!(result.is_none(), "Expected None, but got Some")
@@ -130,7 +140,7 @@ mod version_tag_tests {
         repository.add_tag(commit.unwrap(), "tag_1");
 
         // When
-        let result = repository.get_latest_version_tag().unwrap();
+        let result = repository.get_latest_version_tag("v{version}").unwrap();
 
         // Then
         assert!(result.is_none(), "Expected None, but got Some")
@@ -145,7 +155,10 @@ mod version_tag_tests {
         repository.add_tag(commit.unwrap(), "v1.0.0");
 
         // When
-        let result = repository.get_latest_version_tag().unwrap().unwrap();
+        let result = repository
+            .get_latest_version_tag("v{version}")
+            .unwrap()
+            .unwrap();
 
         // Then
         assert_eq!(result.version, Version::parse("1.0.0").unwrap());
@@ -170,7 +183,10 @@ mod version_tag_tests {
             .unwrap();
 
         // When
-        let result = repository.get_latest_version_tag().unwrap().unwrap();
+        let result = repository
+            .get_latest_version_tag("v{version}")
+            .unwrap()
+            .unwrap();
 
         // Then
         assert_eq!(result.version, Version::parse("1.0.0").unwrap());
@@ -201,7 +217,10 @@ mod version_tag_tests {
             .for_each(|(commit_id, tag)| repository.add_tag(commit_id, tag));
 
         // When
-        let result = repository.get_latest_version_tag().unwrap().unwrap();
+        let result = repository
+            .get_latest_version_tag("v{version}")
+            .unwrap()
+            .unwrap();
 
         // Then
         assert_eq!(result.version, Version::parse("2.0.0").unwrap());
@@ -213,5 +232,40 @@ mod version_tag_tests {
                 .id(),
             "Object IDs don't match"
         );
+    }
+
+    #[test]
+    fn repository_has_version_tag_with_custom_format() {
+        // Given
+        let commit_message = ":tada: initial release";
+        let (_temp_dir, repository) = repo_init(Some(vec![commit_message]));
+        let commit = repository.find_commit_by_message(commit_message);
+        repository.add_tag(commit.unwrap(), "release-1.0.0");
+
+        // When
+        let result = repository
+            .get_latest_version_tag("release-{version}")
+            .unwrap()
+            .unwrap();
+
+        // Then
+        assert_eq!(result.version, Version::parse("1.0.0").unwrap());
+    }
+
+    #[test]
+    fn ignores_tags_that_do_not_match_the_custom_format() {
+        // Given
+        let commit_message = ":tada: initial release";
+        let (_temp_dir, repository) = repo_init(Some(vec![commit_message]));
+        let commit = repository.find_commit_by_message(commit_message);
+        repository.add_tag(commit.unwrap(), "v1.0.0");
+
+        // When
+        let result = repository
+            .get_latest_version_tag("release-{version}")
+            .unwrap();
+
+        // Then
+        assert!(result.is_none(), "Expected None, but got Some");
     }
 }

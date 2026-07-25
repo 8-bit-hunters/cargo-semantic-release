@@ -1,3 +1,4 @@
+use crate::config::SemanticReleaseConfig;
 use crate::repo::prelude::*;
 use git2::Repository;
 use semver::{BuildMetadata, Prerelease, Version};
@@ -32,70 +33,21 @@ impl Changes<GitmojiCommit> {
     /// ## Example
     /// ```
     /// use git2::Repository;
-    /// use cargo_semantic_release::Changes;
+    /// use cargo_semantic_release::{Changes, SemanticReleaseConfig};
     ///
     /// let git_repo = Repository::open(".").unwrap();
     ///
-    /// let changes = Changes::from_repo(&git_repo).expect("error during fetching changes");
+    /// let changes = Changes::from_repo(&git_repo, &SemanticReleaseConfig::default())
+    ///     .expect("error during fetching changes");
     /// println!("changes: {changes}")
     /// ```
-    pub fn from_repo(repository: &impl RepositoryExtension) -> Result<Self, Box<dyn Error>> {
-        let major_intentions = [Gitmoji::Boom];
-        let minor_intentions = [
-            Gitmoji::Sparkles,
-            Gitmoji::ChildrenCrossing,
-            Gitmoji::Lipstick,
-            Gitmoji::Iphone,
-            Gitmoji::Egg,
-            Gitmoji::ChartWithUpwardsTrend,
-            Gitmoji::HeavyPlusSign,
-            Gitmoji::HeavyMinusSign,
-            Gitmoji::PassportControl,
-        ];
-        let patch_intentions = [
-            Gitmoji::Art,
-            Gitmoji::Ambulance,
-            Gitmoji::Lock,
-            Gitmoji::Bug,
-            Gitmoji::Zap,
-            Gitmoji::GoalNet,
-            Gitmoji::Alien,
-            Gitmoji::Wheelchair,
-            Gitmoji::SpeechBalloon,
-            Gitmoji::Mag,
-            Gitmoji::Fire,
-            Gitmoji::WhiteCheckMark,
-            Gitmoji::ClosedLockWithKey,
-            Gitmoji::RotatingLight,
-            Gitmoji::GreenHeart,
-            Gitmoji::ArrowDown,
-            Gitmoji::ArrowUp,
-            Gitmoji::Pushpin,
-            Gitmoji::ConstructionWorker,
-            Gitmoji::Recycle,
-            Gitmoji::Wrench,
-            Gitmoji::Hammer,
-            Gitmoji::GlobeWithMeridians,
-            Gitmoji::Package,
-            Gitmoji::Truck,
-            Gitmoji::Bento,
-            Gitmoji::CardFileBox,
-            Gitmoji::LoudSound,
-            Gitmoji::Mute,
-            Gitmoji::BuildingConstruction,
-            Gitmoji::CameraFlash,
-            Gitmoji::Label,
-            Gitmoji::Seedling,
-            Gitmoji::TriangularFlagOnPost,
-            Gitmoji::Dizzy,
-            Gitmoji::AdhesiveBandage,
-            Gitmoji::MonocleFace,
-            Gitmoji::Necktie,
-            Gitmoji::Stethoscope,
-            Gitmoji::Technologist,
-            Gitmoji::Thread,
-            Gitmoji::SafetyVest,
-        ];
+    pub fn from_repo(
+        repository: &impl RepositoryExtension,
+        config: &SemanticReleaseConfig,
+    ) -> Result<Self, Box<dyn Error>> {
+        let major_intentions = tags_to_gitmojis(&config.commit_parser_options.major_tags)?;
+        let minor_intentions = tags_to_gitmojis(&config.commit_parser_options.minor_tags)?;
+        let patch_intentions = tags_to_gitmojis(&config.commit_parser_options.patch_tags)?;
         let other_intentions = [
             Gitmoji::Memo,
             Gitmoji::Rocket,
@@ -120,7 +72,7 @@ impl Changes<GitmojiCommit> {
             Gitmoji::MoneyWithWings,
         ];
 
-        let version_tag = repository.get_latest_version_tag()?;
+        let version_tag = repository.get_latest_version_tag(&config.tag_format)?;
 
         let unsorted_commits = match version_tag {
             Some(version_tag) => repository.fetch_commits_until(version_tag.commit_oid)?,
@@ -132,20 +84,14 @@ impl Changes<GitmojiCommit> {
             .filter_map(|commit| GitmojiCommit::try_from(commit).ok())
             .collect::<Vec<GitmojiCommit>>();
 
-        let major = get_commits_with_intention::<GitmojiCommit>(
-            unsorted_commits.clone(),
-            major_intentions.to_vec(),
-        );
+        let major =
+            get_commits_with_intention::<GitmojiCommit>(unsorted_commits.clone(), major_intentions);
 
-        let minor = get_commits_with_intention::<GitmojiCommit>(
-            unsorted_commits.clone(),
-            minor_intentions.to_vec(),
-        );
+        let minor =
+            get_commits_with_intention::<GitmojiCommit>(unsorted_commits.clone(), minor_intentions);
 
-        let patch = get_commits_with_intention::<GitmojiCommit>(
-            unsorted_commits.clone(),
-            patch_intentions.to_vec(),
-        );
+        let patch =
+            get_commits_with_intention::<GitmojiCommit>(unsorted_commits.clone(), patch_intentions);
 
         let other = get_commits_with_intention::<GitmojiCommit>(
             unsorted_commits.clone(),
@@ -170,11 +116,13 @@ impl Changes<GitmojiCommit> {
     ///
     /// ```
     ///  use git2::Repository;
-    ///  use cargo_semantic_release::Changes;
+    ///  use cargo_semantic_release::{Changes, SemanticReleaseConfig};
     ///
     ///  let git_repo = Repository::open(".").unwrap();
     ///
-    ///  let action = Changes::from_repo(&git_repo).expect("Error during fetching changes").define_action_for_semantic_version();
+    ///  let action = Changes::from_repo(&git_repo, &SemanticReleaseConfig::default())
+    ///      .expect("Error during fetching changes")
+    ///      .define_action_for_semantic_version();
     ///  println!("suggested change of semantic version: {}", action);
     /// ```
     pub fn define_action_for_semantic_version(self) -> SemanticVersionAction {
@@ -195,7 +143,7 @@ impl TryFrom<&Repository> for Changes<GitmojiCommit> {
     type Error = Box<dyn Error>;
 
     fn try_from(value: &Repository) -> Result<Self, Self::Error> {
-        Self::from_repo(value)
+        Self::from_repo(value, &SemanticReleaseConfig::default())
     }
 }
 
@@ -211,12 +159,13 @@ impl PartialEq for Changes<GitmojiCommit> {
     /// ```
     /// use git2::AttrValue::True;
     /// use git2::Repository;
-    /// use cargo_semantic_release::Changes;
+    /// use cargo_semantic_release::{Changes, SemanticReleaseConfig};
     ///
     /// let git_repo = Repository::open(".").unwrap();
+    /// let config = SemanticReleaseConfig::default();
     ///
-    /// let changes_1 = Changes::from_repo(&git_repo).expect("error during fetching changes");
-    /// let changes_2 = Changes::from_repo(&git_repo).expect("error during fetching changes");
+    /// let changes_1 = Changes::from_repo(&git_repo, &config).expect("error during fetching changes");
+    /// let changes_2 = Changes::from_repo(&git_repo, &config).expect("error during fetching changes");
     ///
     /// assert_eq!(changes_1, changes_2);
     /// ```
@@ -338,9 +287,20 @@ where
         .collect()
 }
 
+fn tags_to_gitmojis(tags: &[String]) -> Result<Vec<Gitmoji>, Box<dyn Error>> {
+    tags.iter()
+        .map(|tag| {
+            Gitmoji::from_shortcode(tag).ok_or_else(|| {
+                format!("Unknown gitmoji tag '{tag}' in commit_parser_options").into()
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod changes_tests {
-    use crate::changes::{Changes, RepositoryExtension};
+    use crate::changes::{Changes, RepositoryExtension, SemanticVersionAction};
+    use crate::config::SemanticReleaseConfig;
     use crate::repo::prelude::VersionTag;
     use crate::repo::prelude::*;
     use crate::test_util::{repo_init, MockError, RepositoryTestExtensions};
@@ -404,7 +364,10 @@ mod changes_tests {
             }
         }
 
-        fn get_latest_version_tag(&self) -> Result<Option<VersionTag>, Box<dyn Error>> {
+        fn get_latest_version_tag(
+            &self,
+            _tag_format: &str,
+        ) -> Result<Option<VersionTag>, Box<dyn Error>> {
             if self.tag_fetching_fails {
                 Err(Box::new(MockError))
             } else {
@@ -441,7 +404,7 @@ mod changes_tests {
         let repository = MockedRepository::new();
 
         // When
-        let result = Changes::from_repo(&repository).unwrap();
+        let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default()).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -460,7 +423,7 @@ mod changes_tests {
         repository.commit_fetching_fails = true;
 
         // When
-        let result = Changes::from_repo(&repository);
+        let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default());
 
         // Then
         assert!(result.is_err(), "Expected error, but got Ok");
@@ -478,7 +441,7 @@ mod changes_tests {
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
-        let result = Changes::from_repo(&repository).unwrap();
+        let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default()).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -552,7 +515,7 @@ mod changes_tests {
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
-        let result = Changes::from_repo(&repository).unwrap();
+        let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default()).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -824,7 +787,7 @@ mod changes_tests {
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
-        let result = Changes::from_repo(&repository).unwrap();
+        let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default()).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -969,7 +932,7 @@ mod changes_tests {
         let repository = MockedRepository::from_commits(commit_messages.clone());
 
         // When
-        let result = Changes::from_repo(&repository).unwrap();
+        let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default()).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -1018,7 +981,7 @@ mod changes_tests {
         repository.commit_with_latest_tag = Some(commit_messages[1].clone());
 
         // When
-        let result = Changes::from_repo(&repository).unwrap();
+        let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default()).unwrap();
 
         // Then
         let expected_result = Changes {
@@ -1093,7 +1056,7 @@ mod changes_tests {
         repository.tag_fetching_fails = true;
 
         // When
-        let result = Changes::from_repo(&repository);
+        let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default());
 
         // Then
         assert!(result.is_err(), "Expected Error, got Ok");
@@ -1125,6 +1088,45 @@ mod changes_tests {
             other: Vec::new(),
         };
         assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn creating_with_a_custom_commit_parser_config_remaps_the_bump_level() {
+        // Given: by default, a lone `:memo:` commit doesn't trigger any version bump.
+        let commit_messages = vec![GitmojiCommit::new(
+            "add or update documentation".to_string(),
+            "".to_string(),
+            Gitmoji::Memo,
+            "".to_string(),
+        )];
+        let repository = MockedRepository::from_commits(commit_messages);
+        let mut config = SemanticReleaseConfig::default();
+        config
+            .commit_parser_options
+            .patch_tags
+            .push(":memo:".to_string());
+
+        // When: `:memo:` is remapped into patch_tags via config.
+        let result = Changes::from_repo(&repository, &config)
+            .unwrap()
+            .define_action_for_semantic_version();
+
+        // Then
+        assert_eq!(result, SemanticVersionAction::IncrementPatch);
+    }
+
+    #[test]
+    fn creating_with_an_unknown_gitmoji_tag_in_config_raises_error() {
+        // Given
+        let repository = MockedRepository::new();
+        let mut config = SemanticReleaseConfig::default();
+        config.commit_parser_options.major_tags = vec![":not_a_real_gitmoji:".to_string()];
+
+        // When
+        let result = Changes::from_repo(&repository, &config);
+
+        // Then
+        assert!(result.is_err(), "Expected Error, got Ok");
     }
 }
 
