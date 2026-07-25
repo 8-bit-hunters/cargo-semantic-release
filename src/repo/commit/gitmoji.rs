@@ -339,10 +339,22 @@ impl Gitmoji {
         Gitmoji::gitmoji_map().get(self).map_or("❓", |e| e.utf)
     }
 
-    fn as_shortcode(&self) -> &str {
+    pub fn as_shortcode(&self) -> &str {
         Gitmoji::gitmoji_map()
             .get(self)
             .map_or("❓", |e| e.shortcode)
+    }
+
+    /// Look up a [`Gitmoji`] by its exact shortcode (e.g. `:boom:`).
+    ///
+    /// ## Returns
+    ///
+    /// `Some(Gitmoji)` if the shortcode is recognized, `None` otherwise.
+    pub fn from_shortcode(shortcode: &str) -> Option<Gitmoji> {
+        Gitmoji::gitmoji_map()
+            .iter()
+            .find(|(_gitmoji, emoji)| emoji.shortcode == shortcode)
+            .map(|(gitmoji, _emoji)| *gitmoji)
     }
 }
 
@@ -508,5 +520,29 @@ mod test_gitmoji {
 
         // Then
         assert_eq!(result, Gitmoji::Bug);
+    }
+
+    #[test]
+    fn from_shortcode_with_known_shortcode() {
+        // Given
+        let shortcode = ":boom:";
+
+        // When
+        let result = Gitmoji::from_shortcode(shortcode);
+
+        // Then
+        assert_eq!(result, Some(Gitmoji::Boom));
+    }
+
+    #[test]
+    fn from_shortcode_with_unknown_shortcode() {
+        // Given
+        let shortcode = ":not_a_real_gitmoji:";
+
+        // When
+        let result = Gitmoji::from_shortcode(shortcode);
+
+        // Then
+        assert_eq!(result, None);
     }
 }

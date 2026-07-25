@@ -1,6 +1,6 @@
 use cargo_semantic_release::test_util::repo_init;
 pub use cargo_semantic_release::test_util::RepositoryTestExtensions;
-use cargo_semantic_release::{Changes, SemanticVersionAction};
+use cargo_semantic_release::{Changes, SemanticReleaseConfig, SemanticVersionAction};
 
 #[test]
 fn empty_repo_raises_error() {
@@ -8,7 +8,7 @@ fn empty_repo_raises_error() {
     let (_temp_dir, repository) = repo_init(None);
 
     // When
-    let result = Changes::from_repo(&repository);
+    let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default());
 
     // Then
     assert!(result.is_err(), "Expected Error, but got Ok");
@@ -26,7 +26,7 @@ fn major_change_increments_major_semantic_version() {
     let (_temp_dir, repository) = repo_init(Some(commit_messages));
 
     // When
-    let result = Changes::from_repo(&repository)
+    let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default())
         .unwrap()
         .define_action_for_semantic_version();
 
@@ -45,7 +45,7 @@ fn minor_change_increments_minor_semantic_version() {
     let (_temp_dir, repository) = repo_init(Some(commit_messages));
 
     // When
-    let result = Changes::from_repo(&repository)
+    let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default())
         .unwrap()
         .define_action_for_semantic_version();
 
@@ -63,7 +63,7 @@ fn patch_change_increments_patch_semantic_version() {
     let (_temp_dir, repository) = repo_init(Some(commit_messages));
 
     // When
-    let result = Changes::from_repo(&repository)
+    let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default())
         .unwrap()
         .define_action_for_semantic_version();
 
@@ -78,7 +78,7 @@ fn other_change_keeps_semantic_version() {
     let (_temp_dir, repository) = repo_init(Some(commit_messages));
 
     // When
-    let result = Changes::from_repo(&repository)
+    let result = Changes::from_repo(&repository, &SemanticReleaseConfig::default())
         .unwrap()
         .define_action_for_semantic_version();
 

@@ -1,5 +1,5 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::{Changes, RepositoryExtension};
+use cargo_semantic_release::{Changes, RepositoryExtension, SemanticReleaseConfig};
 use clap::Parser;
 use clap_cargo::style;
 use git2::Repository;
@@ -42,27 +42,35 @@ fn main() {
     });
     println!("Current directory: {}", path.display());
 
-    let cargo_version = version::get_cargo_version(&path.join("Cargo.toml")).unwrap_or_else(|error| {
-        eprintln!("Error during reading Cargo.toml:\n\t{error}");
+    let cargo_version =
+        version::get_cargo_version(&path.join("Cargo.toml")).unwrap_or_else(|error| {
+            eprintln!("Error during reading Cargo.toml:\n\t{error}");
+            process::exit(1);
+        });
+    println!("Cargo.toml version: {cargo_version}");
+
+    let config = SemanticReleaseConfig::discover(&path).unwrap_or_else(|error| {
+        eprintln!("Error during reading semantic-release config:\n\t{error}");
         process::exit(1);
     });
-    println!("Cargo.toml version: {cargo_version}");
 
     let git_repo = Repository::open(&path).unwrap_or_else(|error| {
         eprintln!("Error during opening repository:\n\t{error}");
         process::exit(1);
     });
 
-    let latest_version_tag = git_repo.get_latest_version_tag().unwrap_or_else(|error| {
-        eprintln!("Error during fetching the latest version tag:\n\t{error}");
-        process::exit(1);
-    });
+    let latest_version_tag = git_repo
+        .get_latest_version_tag(&config.tag_format)
+        .unwrap_or_else(|error| {
+            eprintln!("Error during fetching the latest version tag:\n\t{error}");
+            process::exit(1);
+        });
     let current_version = latest_version_tag
         .map(|tag| tag.version)
         .unwrap_or_else(|| Version::new(0, 0, 0));
     println!("Repo's version: {current_version}");
 
-    let changes = Changes::try_from(&git_repo).unwrap_or_else(|error| {
+    let changes = Changes::from_repo(&git_repo, &config).unwrap_or_else(|error| {
         eprintln!("Error during fetching changes from repository:\n\t{error}");
         process::exit(1);
     });

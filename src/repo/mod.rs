@@ -21,7 +21,10 @@ pub mod prelude {
     pub trait RepositoryExtension {
         fn fetch_commits_until(&self, stop_oid: Oid) -> Result<Vec<Commit>, Box<dyn Error>>;
         fn fetch_all_commits(&self) -> Result<Vec<Commit>, Box<dyn Error>>;
-        fn get_latest_version_tag(&self) -> Result<Option<VersionTag>, Box<dyn Error>>;
+        fn get_latest_version_tag(
+            &self,
+            tag_format: &str,
+        ) -> Result<Option<VersionTag>, Box<dyn Error>>;
     }
 }
 
@@ -34,7 +37,10 @@ impl RepositoryExtension for Repository {
         fetch_all_commits(self)
     }
 
-    fn get_latest_version_tag(&self) -> Result<Option<VersionTag>, Box<dyn Error>> {
-        get_latest_version_tag(self)
+    fn get_latest_version_tag(
+        &self,
+        tag_format: &str,
+    ) -> Result<Option<VersionTag>, Box<dyn Error>> {
+        get_latest_version_tag(self, tag_format)
     }
 }

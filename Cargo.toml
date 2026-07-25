@@ -21,6 +21,8 @@ clap-cargo = "0.15.2"
 once_cell = "1.20.2"
 thiserror = "2.0.12"
 cargo_toml = "1.0.0"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.3"
 
 [workspace.metadata.spellcheck]
 config = "spellcheck.toml"

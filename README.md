@@ -35,6 +35,75 @@ cargo semantic-release
 This will print out the `major`, `minor`, `patch` related changes and the `other` changes.
 Also, it will indicate the recommended action for the semantic version.
 
+## Configuration
+
+By default, `cargo-semantic-release` works out of the box with no configuration needed. You can
+customize its behavior with a config table shaped like
+[python-semantic-release's](https://python-semantic-release.readthedocs.io/en/latest/configuration/configuration.html#config)
+`[tool.semantic_release]`, so existing PSR config using its `emoji` commit parser can be reused
+as-is.
+
+Config is discovered in this order, and the first one found wins:
+
+1. `[package.metadata.semantic_release]` in `Cargo.toml`
+2. a standalone `semantic_release.toml` file (bare table, no wrapper)
+
+If neither is present, the tool falls back to its built-in defaults.
+
+### Options
+
+- `tag_format` — the shape of version tags, e.g. `"v{version}"`. The literal `{version}`
+  placeholder marks where the semantic version sits.
+- `commit_parser_options.major_tags` / `minor_tags` / `patch_tags` — the Gitmoji shortcodes that
+  trigger each level of version bump. A commit whose leading Gitmoji isn't listed in any of these
+  doesn't affect the bump decision.
+
+### Example: `Cargo.toml`
+
+```toml
+[package.metadata.semantic_release]
+tag_format = "v{version}"
+
+[package.metadata.semantic_release.commit_parser_options]
+major_tags = [":boom:"]
+minor_tags = [":sparkles:", ":children_crossing:"]
+patch_tags = [":bug:", ":zap:"]
+```
+
+### Example: standalone `semantic_release.toml`
+
+```toml
+tag_format = "v{version}"
+
+[commit_parser_options]
+major_tags = [":boom:"]
+minor_tags = [":sparkles:", ":children_crossing:"]
+patch_tags = [":bug:", ":zap:"]
+```
+
+### Defaults
+
+```toml
+tag_format = "v{version}"
+
+[commit_parser_options]
+major_tags = [":boom:"]
+minor_tags = [
+    ":sparkles:", ":children_crossing:", ":lipstick:", ":iphone:", ":egg:",
+    ":chart_with_upwards_trend:", ":heavy_plus_sign:", ":heavy_minus_sign:", ":passport_control:",
+]
+patch_tags = [
+    ":art:", ":ambulance:", ":lock:", ":bug:", ":zap:", ":goal_net:", ":alien:", ":wheelchair:",
+    ":speech_balloon:", ":mag:", ":fire:", ":white_check_mark:", ":closed_lock_with_key:",
+    ":rotating_light:", ":green_heart:", ":arrow_down:", ":arrow_up:", ":pushpin:",
+    ":construction_worker:", ":recycle:", ":wrench:", ":hammer:", ":globe_with_meridians:",
+    ":package:", ":truck:", ":bento:", ":card_file_box:", ":loud_sound:", ":mute:",
+    ":building_construction:", ":camera_flash:", ":label:", ":seedling:",
+    ":triangular_flag_on_post:", ":dizzy:", ":adhesive_bandage:", ":monocle_face:", ":necktie:",
+    ":stethoscope:", ":technologist:", ":thread:", ":safety_vest:",
+]
+```
+
 ## Library
 
 The utility functions for the binary are available in a [library crate](https://docs.rs/crate/cargo-semantic-release/).
