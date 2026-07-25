@@ -30,7 +30,7 @@ pub trait RepositoryTestExtensions {
     #[allow(dead_code)]
     fn add_tag(&self, commit: Commit, tag_name: &str);
     #[allow(dead_code)]
-    fn find_commit_by_message(&self, commit_message: &str) -> Option<Commit>;
+    fn find_commit_by_message(&self, commit_message: &str) -> Option<Commit<'_>>;
 }
 
 impl RepositoryTestExtensions for Repository {
@@ -70,7 +70,7 @@ impl RepositoryTestExtensions for Repository {
     /// Find a commit by its message
     /// ## Result
     /// The commit if it's found, None if it's not found
-    fn find_commit_by_message(&self, commit_message: &str) -> Option<Commit> {
+    fn find_commit_by_message(&self, commit_message: &str) -> Option<Commit<'_>> {
         let mut revwalk: Revwalk = self.revwalk().unwrap();
         revwalk.push_head().unwrap();
         revwalk.set_sorting(git2::Sort::TIME).unwrap();
