@@ -79,8 +79,10 @@ dependencies = [
  "once_cell",
  "regex",
  "semver",
+ "serde",
  "tempfile",
  "thiserror",
+ "toml",
 ]
 
 [[package]]

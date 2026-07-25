@@ -7,3 +7,6 @@ struct
 repo
 Incrementing
 metadata
+shortcode
+workspace
+config
