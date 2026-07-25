@@ -6,6 +6,8 @@ use git2::Repository;
 use semver::Version;
 use std::{env, process};
 
+mod version;
+
 #[derive(Parser)]
 #[command(name = "cargo")]
 #[command(bin_name = "cargo")]
@@ -40,7 +42,13 @@ fn main() {
     });
     println!("Current directory: {}", path.display());
 
-    let git_repo = Repository::open(path).unwrap_or_else(|error| {
+    let cargo_version = version::get_cargo_version(&path.join("Cargo.toml")).unwrap_or_else(|error| {
+        eprintln!("Error during reading Cargo.toml:\n\t{error}");
+        process::exit(1);
+    });
+    println!("Cargo.toml version: {cargo_version}");
+
+    let git_repo = Repository::open(&path).unwrap_or_else(|error| {
         eprintln!("Error during opening repository:\n\t{error}");
         process::exit(1);
     });
@@ -52,7 +60,7 @@ fn main() {
     let current_version = latest_version_tag
         .map(|tag| tag.version)
         .unwrap_or_else(|| Version::new(0, 0, 0));
-    println!("Current version: {current_version}");
+    println!("Repo's version: {current_version}");
 
     let changes = Changes::try_from(&git_repo).unwrap_or_else(|error| {
         eprintln!("Error during fetching changes from repository:\n\t{error}");
