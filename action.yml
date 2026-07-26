@@ -1,0 +1,10 @@
+name: Cargo Semantic Release
+description: Determine the next semantic version for a Gitmoji-based Rust project
+
+branding:
+  icon: tag
+  color: orange
+
+runs:
+  using: docker
+  image: Dockerfile
