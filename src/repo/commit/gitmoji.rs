@@ -338,7 +338,7 @@ impl Gitmoji {
                 (MonocleFace, Emoji::new("🧐", ":monocle_face:")),
                 (Necktie, Emoji::new("👔", ":necktie:")),
                 (Stethoscope, Emoji::new("🩺", ":stethoscope:")),
-                (Technologist, Emoji::new("🧑", ":technologist:")),
+                (Technologist, Emoji::new("🧑‍💻", ":technologist:")),
                 (Thread, Emoji::new("🧵", ":thread:")),
                 (SafetyVest, Emoji::new("🦺", ":safety_vest:")),
                 (Memo, Emoji::new("📝", ":memo:")),
