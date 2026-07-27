@@ -21,6 +21,10 @@ impl GitmojiCommit {
     }
 
     fn parse(message: &str, hash: String) -> Result<Self, CommitError> {
+        if message.trim().is_empty() {
+            return Err(CommitError::MissingMessage);
+        }
+
         let intention = Gitmoji::try_from(message)?;
 
         let message = message
@@ -98,6 +102,7 @@ impl CommitInterface for GitmojiCommit {
 #[cfg(test)]
 mod gitmoji_commit_tests {
     use crate::repo::commit::gitmoji::{Gitmoji, GitmojiCommit};
+    use crate::repo::commit::{Commit, CommitError};
     use crate::test_util::{repo_init, RepositoryTestExtensions};
 
     #[test]
@@ -121,6 +126,36 @@ mod gitmoji_commit_tests {
             scope: "".to_string(),
         };
         assert_eq!(result, expected_result)
+    }
+
+    #[test]
+    fn create_from_commit_with_empty_message_returns_missing_message_error() {
+        // Given
+        let commit = Commit {
+            message: "".to_string(),
+            hash: "abc123".to_string(),
+        };
+
+        // When
+        let result = GitmojiCommit::try_from(commit);
+
+        // Then
+        assert_eq!(result.unwrap_err(), CommitError::MissingMessage);
+    }
+
+    #[test]
+    fn create_from_commit_with_whitespace_only_message_returns_missing_message_error() {
+        // Given
+        let commit = Commit {
+            message: " ".to_string(),
+            hash: "abc123".to_string(),
+        };
+
+        // When
+        let result = GitmojiCommit::try_from(commit);
+
+        // Then
+        assert_eq!(result.unwrap_err(), CommitError::MissingMessage);
     }
 
     #[test]
