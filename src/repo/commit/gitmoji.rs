@@ -380,15 +380,15 @@ impl Gitmoji {
             .map_or("❓", |e| e.shortcode)
     }
 
-    /// Look up a [`Gitmoji`] by its exact shortcode (e.g. `:boom:`).
+    /// Look up a [`Gitmoji`] by its exact shortcode (e.g. `:boom:`) or literal emoji (e.g. `💥`).
     ///
     /// ## Returns
     ///
-    /// `Some(Gitmoji)` if the shortcode is recognized, `None` otherwise.
-    pub fn from_shortcode(shortcode: &str) -> Option<Gitmoji> {
+    /// `Some(Gitmoji)` if the tag is recognized, `None` otherwise.
+    pub fn from_tag(tag: &str) -> Option<Gitmoji> {
         Gitmoji::gitmoji_map()
             .iter()
-            .find(|(_gitmoji, emoji)| emoji.shortcode == shortcode)
+            .find(|(_gitmoji, emoji)| emoji.shortcode == tag || emoji.utf == tag)
             .map(|(gitmoji, _emoji)| *gitmoji)
     }
 }
@@ -558,24 +558,36 @@ mod test_gitmoji {
     }
 
     #[test]
-    fn from_shortcode_with_known_shortcode() {
+    fn from_tag_with_known_shortcode() {
         // Given
-        let shortcode = ":boom:";
+        let tag = ":boom:";
 
         // When
-        let result = Gitmoji::from_shortcode(shortcode);
+        let result = Gitmoji::from_tag(tag);
 
         // Then
         assert_eq!(result, Some(Gitmoji::Boom));
     }
 
     #[test]
-    fn from_shortcode_with_unknown_shortcode() {
+    fn from_tag_with_literal_emoji() {
         // Given
-        let shortcode = ":not_a_real_gitmoji:";
+        let tag = "💥";
 
         // When
-        let result = Gitmoji::from_shortcode(shortcode);
+        let result = Gitmoji::from_tag(tag);
+
+        // Then
+        assert_eq!(result, Some(Gitmoji::Boom));
+    }
+
+    #[test]
+    fn from_tag_with_unknown_tag() {
+        // Given
+        let tag = ":not_a_real_gitmoji:";
+
+        // When
+        let result = Gitmoji::from_tag(tag);
 
         // Then
         assert_eq!(result, None);

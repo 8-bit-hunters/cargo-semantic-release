@@ -290,7 +290,7 @@ where
 fn tags_to_gitmojis(tags: &[String]) -> Result<Vec<Gitmoji>, Box<dyn Error>> {
     tags.iter()
         .map(|tag| {
-            Gitmoji::from_shortcode(tag).ok_or_else(|| {
+            Gitmoji::from_tag(tag).ok_or_else(|| {
                 format!("Unknown gitmoji tag '{tag}' in commit_parser_options").into()
             })
         })

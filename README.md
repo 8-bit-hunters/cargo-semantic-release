@@ -55,9 +55,9 @@ If neither is present, the tool falls back to its built-in defaults.
 
 - `tag_format` — the shape of version tags, e.g. `"v{version}"`. The literal `{version}`
   placeholder marks where the semantic version sits.
-- `commit_parser_options.major_tags` / `minor_tags` / `patch_tags` — the Gitmoji shortcodes that
-  trigger each level of version bump. A commit whose leading Gitmoji isn't listed in any of these
-  doesn't affect the bump decision.
+- `commit_parser_options.major_tags` / `minor_tags` / `patch_tags` — the Gitmoji shortcodes (e.g.
+  `:boom:`) or literal emoji (e.g. `💥`) that trigger each level of version bump. A commit whose
+  leading Gitmoji isn't listed in any of these doesn't affect the bump decision.
 
 ### Example: `Cargo.toml`
 
