@@ -394,6 +394,18 @@ mod changes_tests {
         fn commit_file(&self, _path: &Path, _message: &str) -> Result<Oid, Box<dyn Error>> {
             unimplemented!("not exercised by these tests")
         }
+
+        fn delete_tag(&self, _name: &str) -> Result<(), Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
+        fn reset_soft_to(&self, _oid: Oid) -> Result<(), Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
+        fn commit_parent_oid(&self, _oid: Oid) -> Result<Oid, Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
     }
 
     impl MockedRepository {

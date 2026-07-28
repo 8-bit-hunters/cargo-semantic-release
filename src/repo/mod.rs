@@ -37,6 +37,13 @@ pub mod prelude {
         /// Commit `path`'s current working-directory content as a new commit on `HEAD`, with
         /// `HEAD`'s current commit as its sole parent.
         fn commit_file(&self, path: &Path, message: &str) -> Result<Oid, Box<dyn Error>>;
+        /// Delete the tag named `name`.
+        fn delete_tag(&self, name: &str) -> Result<(), Box<dyn Error>>;
+        /// Move `HEAD` (and the branch it points at) back to `oid`, without touching the index
+        /// or working tree.
+        fn reset_soft_to(&self, oid: Oid) -> Result<(), Box<dyn Error>>;
+        /// The `Oid` of `oid`'s sole parent commit.
+        fn commit_parent_oid(&self, oid: Oid) -> Result<Oid, Box<dyn Error>>;
     }
 }
 
@@ -87,6 +94,20 @@ impl RepositoryExtension for Repository {
             &tree,
             &[&parent],
         )?)
+    }
+
+    fn delete_tag(&self, name: &str) -> Result<(), Box<dyn Error>> {
+        Ok(self.tag_delete(name)?)
+    }
+
+    fn reset_soft_to(&self, oid: Oid) -> Result<(), Box<dyn Error>> {
+        let object = self.find_object(oid, None)?;
+        self.reset(&object, git2::ResetType::Soft, None)?;
+        Ok(())
+    }
+
+    fn commit_parent_oid(&self, oid: Oid) -> Result<Oid, Box<dyn Error>> {
+        Ok(self.find_commit(oid)?.parent_id(0)?)
     }
 }
 
@@ -151,6 +172,58 @@ mod repository_extension_write_tests {
         let commit = repository.find_commit_by_message(":bookmark: Bump release version to v2.0.0");
         assert!(commit.is_some());
         assert_eq!(commit.unwrap().parent_id(0).unwrap(), previous_head_oid);
+    }
+
+    #[test]
+    fn delete_tag_makes_it_undiscoverable_via_get_latest_version_tag() {
+        // Given
+        let (_temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let head_oid = repository.head_commit_oid().unwrap();
+        repository.create_tag("v1.2.3", head_oid).unwrap();
+
+        // When
+        repository.delete_tag("v1.2.3").unwrap();
+
+        // Then
+        let result = repository.get_latest_version_tag("v{version}").unwrap();
+        assert!(result.is_none(), "Expected None, but got Some");
+    }
+
+    #[test]
+    fn reset_soft_to_moves_head_without_touching_the_working_tree() {
+        // Given
+        let (temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let first_commit_oid = repository.head_commit_oid().unwrap();
+        std::fs::write(temp_dir.path().join("Cargo.toml"), "version = \"2.0.0\"\n").unwrap();
+        repository
+            .commit_file(std::path::Path::new("Cargo.toml"), "bump version")
+            .unwrap();
+
+        // When
+        repository.reset_soft_to(first_commit_oid).unwrap();
+
+        // Then
+        assert_eq!(repository.head_commit_oid().unwrap(), first_commit_oid);
+        let working_tree_content =
+            std::fs::read_to_string(temp_dir.path().join("Cargo.toml")).unwrap();
+        assert_eq!(working_tree_content, "version = \"2.0.0\"\n");
+    }
+
+    #[test]
+    fn commit_parent_oid_returns_the_sole_parent_s_oid() {
+        // Given
+        let (temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let parent_oid = repository.head_commit_oid().unwrap();
+        std::fs::write(temp_dir.path().join("Cargo.toml"), "version = \"2.0.0\"\n").unwrap();
+        let child_oid = repository
+            .commit_file(std::path::Path::new("Cargo.toml"), "bump version")
+            .unwrap();
+
+        // When
+        let result = repository.commit_parent_oid(child_oid).unwrap();
+
+        // Then
+        assert_eq!(result, parent_oid);
     }
 
     #[test]
