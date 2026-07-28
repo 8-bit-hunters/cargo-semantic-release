@@ -53,12 +53,11 @@ fn replace_package_version(contents: &str, version: &Version) -> Option<String> 
 
     let package_section = &contents[section_body_start..next_section_offset];
     let version_line = Regex::new(r#"(?m)^version\s*=\s*"[^"]*""#).unwrap();
+
+    version_line.find(package_section)?;
+
     let new_package_section =
         version_line.replacen(package_section, 1, format!("version = \"{version}\""));
-
-    if new_package_section == package_section {
-        return None;
-    }
 
     Some(format!(
         "{}{}{}",
@@ -167,6 +166,24 @@ mod set_cargo_version_tests {
         assert_eq!(
             result,
             "[package]\nname = \"foo\"\nversion = \"2.0.0\"\nedition = \"2021\"\n"
+        );
+    }
+
+    #[test]
+    fn succeeds_as_a_no_op_when_the_version_is_already_correct() {
+        // Given
+        let (_temp_dir, cargo_toml_path) = write_cargo_toml(
+            "[package]\nname = \"foo\"\nversion = \"1.2.3\"\nedition = \"2021\"\n",
+        );
+
+        // When
+        let result = set_cargo_version(&cargo_toml_path, &Version::new(1, 2, 3));
+
+        // Then
+        assert!(result.is_ok());
+        assert_eq!(
+            fs::read_to_string(&cargo_toml_path).unwrap(),
+            "[package]\nname = \"foo\"\nversion = \"1.2.3\"\nedition = \"2021\"\n"
         );
     }
 
