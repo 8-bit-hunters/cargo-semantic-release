@@ -21,6 +21,10 @@ enum CargoCli {
 #[derive(clap::Args)]
 #[command(version, about, display_name = "semantic-release")]
 struct SemanticReleaseArgs {
+    /// Run without making any changes: no files written, no commits, tags, or pushes made
+    #[arg(long, global = true)]
+    noop: bool,
+
     #[command(subcommand)]
     command: SemanticReleaseCommand,
 }
@@ -76,6 +80,13 @@ pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling:
 
 fn main() {
     let CargoCli::SemanticRelease(args) = CargoCli::parse();
+
+    if args.noop {
+        println!(
+            "Running in no-operation mode (--noop): no files will be written, and no commits, \
+             tags, or pushes will be made."
+        );
+    }
 
     match args.command {
         SemanticReleaseCommand::Version(version_args) => run_version_command(version_args),
