@@ -25,6 +25,11 @@ struct SemanticReleaseArgs {
     #[arg(long, global = true)]
     noop: bool,
 
+    /// Increase output verbosity: -v also prints the current version, -vv also prints the
+    /// commits since the last version tag
+    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
+    verbose: u8,
+
     #[command(subcommand)]
     command: SemanticReleaseCommand,
 }
@@ -88,12 +93,16 @@ fn main() {
         );
     }
 
+    let verbosity = args.verbose;
+
     match args.command {
-        SemanticReleaseCommand::Version(version_args) => run_version_command(version_args),
+        SemanticReleaseCommand::Version(version_args) => {
+            run_version_command(version_args, verbosity)
+        }
     }
 }
 
-fn run_version_command(args: VersionArgs) {
+fn run_version_command(args: VersionArgs, verbosity: u8) {
     let path = env::current_dir().unwrap_or_else(|error| {
         eprintln!("Error during getting the current directory:\n\t{error}");
         process::exit(1);
@@ -109,6 +118,22 @@ fn run_version_command(args: VersionArgs) {
         process::exit(1);
     });
 
+    if verbosity >= 1 {
+        let current_version = current_version(&git_repo, &config).unwrap_or_else(|error| {
+            eprintln!("Error during fetching the current version:\n\t{error}");
+            process::exit(1);
+        });
+        println!("Current version: {current_version}");
+    }
+
+    if verbosity >= 2 {
+        let changes = Changes::from_repo(&git_repo, &config).unwrap_or_else(|error| {
+            eprintln!("Error during fetching changes from repository:\n\t{error}");
+            process::exit(1);
+        });
+        println!("Commits since the last version tag:\n{changes}");
+    }
+
     let version = next_version(&git_repo, &config, args.forced_action()).unwrap_or_else(|error| {
         eprintln!("Error during computing the next version:\n\t{error}");
         process::exit(1);
@@ -121,27 +146,69 @@ fn run_version_command(args: VersionArgs) {
     }
 }
 
+/// The repository's current version: the latest version tag's version, or `0.0.0` if there is
+/// none yet.
+fn current_version(
+    repository: &impl RepositoryExtension,
+    config: &SemanticReleaseConfig,
+) -> Result<Version, Box<dyn std::error::Error>> {
+    Ok(repository
+        .get_latest_version_tag(&config.tag_format)?
+        .map(|tag| tag.version)
+        .unwrap_or_else(|| Version::new(0, 0, 0)))
+}
+
 /// Compute the next semantic version for `repository`, given `config`.
 ///
-/// Combines the latest version tag (or `0.0.0` if there is none) with a [`SemanticVersionAction`].
-/// `forced_action`, when given, is used as-is instead of deriving one from the commits since
-/// that tag, in which case the repository's commits aren't parsed at all.
+/// Combines [`current_version`] with a [`SemanticVersionAction`]. `forced_action`, when given,
+/// is used as-is instead of deriving one from the commits since that tag, in which case the
+/// repository's commits aren't parsed at all.
 fn next_version(
     repository: &impl RepositoryExtension,
     config: &SemanticReleaseConfig,
     forced_action: Option<SemanticVersionAction>,
 ) -> Result<Version, Box<dyn std::error::Error>> {
-    let current_version = repository
-        .get_latest_version_tag(&config.tag_format)?
-        .map(|tag| tag.version)
-        .unwrap_or_else(|| Version::new(0, 0, 0));
-
     let action = match forced_action {
         Some(action) => action,
         None => Changes::from_repo(repository, config)?.define_action_for_semantic_version(),
     };
 
-    Ok(action.apply(&current_version))
+    Ok(action.apply(&current_version(repository, config)?))
+}
+
+#[cfg(test)]
+mod current_version_tests {
+    use crate::current_version;
+    use cargo_semantic_release::test_util::{repo_init, RepositoryTestExtensions};
+    use cargo_semantic_release::SemanticReleaseConfig;
+    use semver::Version;
+
+    #[test]
+    fn defaults_to_0_0_0_without_a_version_tag() {
+        // Given
+        let (_temp_dir, repository) = repo_init(None);
+
+        // When
+        let result = current_version(&repository, &SemanticReleaseConfig::default());
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(0, 0, 0));
+    }
+
+    #[test]
+    fn reads_the_version_from_the_latest_version_tag() {
+        // Given
+        let commit_message = ":tada: initial release";
+        let (_temp_dir, repository) = repo_init(Some(vec![commit_message]));
+        let tagged_commit = repository.find_commit_by_message(commit_message).unwrap();
+        repository.add_tag(tagged_commit, "v1.2.3");
+
+        // When
+        let result = current_version(&repository, &SemanticReleaseConfig::default());
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(1, 2, 3));
+    }
 }
 
 #[cfg(test)]
