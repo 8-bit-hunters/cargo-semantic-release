@@ -375,6 +375,13 @@ mod changes_tests {
             }
         }
 
+        fn get_all_version_tags(
+            &self,
+            _tag_format: &str,
+        ) -> Result<Vec<VersionTag>, Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
         fn head_commit_oid(&self) -> Result<Oid, Box<dyn Error>> {
             unimplemented!("not exercised by these tests")
         }

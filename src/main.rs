@@ -25,8 +25,7 @@ struct SemanticReleaseArgs {
     #[arg(long, global = true)]
     noop: bool,
 
-    /// Increase output verbosity: -v also prints the current version, -vv also prints the
-    /// commits since the last version tag
+    /// Increase output verbosity: -vv also prints the commits since the last version tag
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
 
@@ -125,15 +124,31 @@ fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
         process::exit(1);
     });
 
-    if verbosity >= 1 {
-        let current_version = current_version(&git_repo, &config).unwrap_or_else(|error| {
-            eprintln!("Error during fetching the current version:\n\t{error}");
+    let mut found_tags = git_repo
+        .get_all_version_tags(&config.tag_format)
+        .unwrap_or_else(|error| {
+            eprintln!("Error during fetching version tags:\n\t{error}");
             process::exit(1);
         });
-        println!("Current version: {current_version}");
-    }
+    found_tags.sort();
+    let found_tags_display = if found_tags.is_empty() {
+        "none".to_string()
+    } else {
+        found_tags
+            .iter()
+            .map(|tag| render_tag(&config.tag_format, &tag.version))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    println!("Found tags: {found_tags_display}");
 
-    if verbosity >= 2 {
+    let repo_current_version = current_version(&git_repo, &config).unwrap_or_else(|error| {
+        eprintln!("Error during fetching the current version:\n\t{error}");
+        process::exit(1);
+    });
+    println!("Current version: {repo_current_version}");
+
+    if should_print_commit_log(verbosity) {
         let changes = Changes::from_repo(&git_repo, &config).unwrap_or_else(|error| {
             eprintln!("Error during fetching changes from repository:\n\t{error}");
             process::exit(1);
@@ -165,6 +180,13 @@ fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
     } else {
         println!("Next version: {version}");
     }
+}
+
+/// Whether the commits since the last version tag should be printed, given `verbosity`.
+///
+/// Requires `-vv` (or higher); `-v` alone does not show the commit log.
+fn should_print_commit_log(verbosity: u8) -> bool {
+    verbosity >= 2
 }
 
 /// The repository's current version: the latest version tag's version, or `0.0.0` if there is
@@ -215,6 +237,23 @@ fn next_version(
     };
 
     Ok(action.apply(&baseline))
+}
+
+#[cfg(test)]
+mod should_print_commit_log_tests {
+    use crate::should_print_commit_log;
+
+    #[test]
+    fn is_false_below_double_verbose() {
+        assert!(!should_print_commit_log(0));
+        assert!(!should_print_commit_log(1));
+    }
+
+    #[test]
+    fn is_true_at_double_verbose_or_more() {
+        assert!(should_print_commit_log(2));
+        assert!(should_print_commit_log(3));
+    }
 }
 
 #[cfg(test)]

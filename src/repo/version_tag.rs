@@ -3,22 +3,22 @@ use regex::Regex;
 use semver::Version;
 use std::error::Error;
 
-/// Get the latest version tag.
+/// Get every tag matching `tag_format`.
 ///
 /// `tag_format` describes the shape of version tags, e.g. `"v{version}"`; the
 /// literal `{version}` placeholder marks where the semantic version sits.
 /// ## Returns
-/// [`VersionTag`] containing the latest version tag.
-pub fn get_latest_version_tag(
+/// All matching [`VersionTag`]s, in no particular order.
+pub fn get_all_version_tags(
     repository: &Repository,
     tag_format: &str,
-) -> Result<Option<VersionTag>, Box<dyn Error>> {
+) -> Result<Vec<VersionTag>, Box<dyn Error>> {
     let references: Vec<Reference> = repository
         .references()?
         .filter_map(|reference| reference.ok())
         .collect();
 
-    let version_tags: Vec<VersionTag> = references
+    Ok(references
         .iter()
         .filter(|reference| reference.is_tag())
         .filter_map(|reference| {
@@ -34,9 +34,22 @@ pub fn get_latest_version_tag(
                 .and_then(|tag| VersionTag::from_annotated_tag(&tag, tag_format))
                 .or_else(|| VersionTag::from_lightweight_tag(reference, tag_format))
         })
-        .collect();
+        .collect())
+}
 
-    Ok(version_tags.iter().max().cloned())
+/// Get the latest version tag.
+///
+/// `tag_format` describes the shape of version tags, e.g. `"v{version}"`; the
+/// literal `{version}` placeholder marks where the semantic version sits.
+/// ## Returns
+/// [`VersionTag`] containing the latest version tag.
+pub fn get_latest_version_tag(
+    repository: &Repository,
+    tag_format: &str,
+) -> Result<Option<VersionTag>, Box<dyn Error>> {
+    Ok(get_all_version_tags(repository, tag_format)?
+        .into_iter()
+        .max())
 }
 
 /// Render `version` into a tag name, following `tag_format`.
@@ -119,6 +132,73 @@ impl VersionTag {
         );
         let captures = Regex::new(&pattern).ok()?.captures(tag_name)?;
         Version::parse(&captures[1]).ok()
+    }
+}
+
+#[cfg(test)]
+mod get_all_version_tags_tests {
+    use crate::repo::prelude::RepositoryExtension;
+    use crate::test_util::repo_init;
+    pub use crate::test_util::RepositoryTestExtensions;
+    use semver::Version;
+    use std::collections::HashSet;
+
+    #[test]
+    fn returns_an_empty_vec_without_tags() {
+        // Given
+        let (_temp_dir, repository) = repo_init(Some(vec![":tada: initial release"]));
+
+        // When
+        let result = repository.get_all_version_tags("v{version}").unwrap();
+
+        // Then
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn returns_every_matching_version_tag() {
+        // Given
+        let commit_messages = vec![
+            ":tada: initial release",
+            ":sparkles: new feature",
+            ":boom: everything is broken",
+        ];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
+        let tags = vec!["v1.0.0", "v1.1.0", "v2.0.0"];
+        commit_messages
+            .iter()
+            .map(|commit| repository.find_commit_by_message(commit).unwrap())
+            .zip(tags)
+            .for_each(|(commit_id, tag)| repository.add_tag(commit_id, tag));
+
+        // When
+        let result = repository.get_all_version_tags("v{version}").unwrap();
+
+        // Then
+        let versions: HashSet<Version> = result.into_iter().map(|tag| tag.version).collect();
+        assert_eq!(
+            versions,
+            HashSet::from([
+                Version::new(1, 0, 0),
+                Version::new(1, 1, 0),
+                Version::new(2, 0, 0),
+            ])
+        );
+    }
+
+    #[test]
+    fn ignores_tags_that_do_not_match_the_format() {
+        // Given
+        let commit_message = ":tada: initial release";
+        let (_temp_dir, repository) = repo_init(Some(vec![commit_message]));
+        let commit = repository.find_commit_by_message(commit_message);
+        repository.add_tag(commit.unwrap(), "not-a-version-tag");
+
+        // When
+        let result = repository.get_all_version_tags("v{version}").unwrap();
+
+        // Then
+        assert!(result.is_empty());
     }
 }
 

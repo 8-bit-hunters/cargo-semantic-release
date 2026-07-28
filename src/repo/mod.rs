@@ -5,7 +5,7 @@ mod version_tag;
 use crate::repo::commit::Commit;
 use crate::repo::commit_fetcher::{fetch_all_commits, fetch_commits_until};
 use crate::repo::prelude::RepositoryExtension;
-use crate::repo::version_tag::get_latest_version_tag;
+use crate::repo::version_tag::{get_all_version_tags, get_latest_version_tag};
 use git2::{Oid, Repository};
 use std::error::Error;
 use version_tag::VersionTag;
@@ -25,6 +25,9 @@ pub mod prelude {
             &self,
             tag_format: &str,
         ) -> Result<Option<VersionTag>, Box<dyn Error>>;
+        /// Every tag matching `tag_format`, in no particular order.
+        fn get_all_version_tags(&self, tag_format: &str)
+            -> Result<Vec<VersionTag>, Box<dyn Error>>;
         /// The commit `HEAD` currently points at.
         fn head_commit_oid(&self) -> Result<Oid, Box<dyn Error>>;
         /// Create an annotated tag named `name` pointing at `target_oid`.
@@ -46,6 +49,10 @@ impl RepositoryExtension for Repository {
         tag_format: &str,
     ) -> Result<Option<VersionTag>, Box<dyn Error>> {
         get_latest_version_tag(self, tag_format)
+    }
+
+    fn get_all_version_tags(&self, tag_format: &str) -> Result<Vec<VersionTag>, Box<dyn Error>> {
+        get_all_version_tags(self, tag_format)
     }
 
     fn head_commit_oid(&self) -> Result<Oid, Box<dyn Error>> {
