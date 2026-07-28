@@ -8,6 +8,8 @@ use std::path::Path;
 ///
 /// The parsed [`Version`], or an error message if the file couldn't be read/parsed,
 /// has no `[package]` section, or the version is inherited from a workspace.
+// Not wired into the CLI yet — the `version` subcommand will read/write this in a later step.
+#[allow(dead_code)]
 pub fn get_cargo_version(cargo_toml_path: &Path) -> Result<Version, String> {
     let manifest = Manifest::from_path(cargo_toml_path).map_err(|error| error.to_string())?;
     manifest

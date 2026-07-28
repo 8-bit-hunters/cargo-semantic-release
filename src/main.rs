@@ -18,7 +18,16 @@ enum CargoCli {
 
 #[derive(clap::Args)]
 #[command(version, about, display_name = "semantic-release")]
-struct SemanticReleaseArgs {}
+struct SemanticReleaseArgs {
+    #[command(subcommand)]
+    command: SemanticReleaseCommand,
+}
+
+#[derive(clap::Subcommand)]
+enum SemanticReleaseCommand {
+    /// Compute and print the next semantic version derived from commit history
+    Version,
+}
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
     .header(style::HEADER)
@@ -30,24 +39,18 @@ pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling:
     .invalid(style::INVALID);
 
 fn main() {
-    // If the clap parser finds the --version or --help argument it will
-    // show the version and help information respectively. Then it will exit.
-    // When no arguments are found the application will just continue after
-    // the parse step.
-    let _ = CargoCli::parse();
+    let CargoCli::SemanticRelease(args) = CargoCli::parse();
 
+    match args.command {
+        SemanticReleaseCommand::Version => run_version_command(),
+    }
+}
+
+fn run_version_command() {
     let path = env::current_dir().unwrap_or_else(|error| {
         eprintln!("Error during getting the current directory:\n\t{error}");
         process::exit(1);
     });
-    println!("Current directory: {}", path.display());
-
-    let cargo_version =
-        version::get_cargo_version(&path.join("Cargo.toml")).unwrap_or_else(|error| {
-            eprintln!("Error during reading Cargo.toml:\n\t{error}");
-            process::exit(1);
-        });
-    println!("Cargo.toml version: {cargo_version}");
 
     let config = SemanticReleaseConfig::discover(&path).unwrap_or_else(|error| {
         eprintln!("Error during reading semantic-release config:\n\t{error}");
@@ -59,26 +62,67 @@ fn main() {
         process::exit(1);
     });
 
-    let latest_version_tag = git_repo
-        .get_latest_version_tag(&config.tag_format)
-        .unwrap_or_else(|error| {
-            eprintln!("Error during fetching the latest version tag:\n\t{error}");
-            process::exit(1);
-        });
-    let current_version = latest_version_tag
-        .map(|tag| tag.version)
-        .unwrap_or_else(|| Version::new(0, 0, 0));
-    println!("Repo's version: {current_version}");
-
-    let changes = Changes::from_repo(&git_repo, &config).unwrap_or_else(|error| {
-        eprintln!("Error during fetching changes from repository:\n\t{error}");
+    let version = next_version(&git_repo, &config).unwrap_or_else(|error| {
+        eprintln!("Error during computing the next version:\n\t{error}");
         process::exit(1);
     });
-    println!("Changes in the repository:\n{changes}");
 
-    let action = changes.define_action_for_semantic_version();
-    println!("Action for semantic version ➡️ {action}");
+    println!("{version}");
+}
 
-    let updated_version = action.apply(&current_version);
-    println!("Updated version: {updated_version}");
+/// Compute the next semantic version for `repository`, given `config`.
+///
+/// Combines the latest version tag (or `0.0.0` if there is none) with the
+/// [`SemanticVersionAction`](cargo_semantic_release::SemanticVersionAction) derived from the
+/// commits since that tag.
+fn next_version(
+    repository: &impl RepositoryExtension,
+    config: &SemanticReleaseConfig,
+) -> Result<Version, Box<dyn std::error::Error>> {
+    let current_version = repository
+        .get_latest_version_tag(&config.tag_format)?
+        .map(|tag| tag.version)
+        .unwrap_or_else(|| Version::new(0, 0, 0));
+
+    let action = Changes::from_repo(repository, config)?.define_action_for_semantic_version();
+
+    Ok(action.apply(&current_version))
+}
+
+#[cfg(test)]
+mod next_version_tests {
+    use crate::next_version;
+    use cargo_semantic_release::test_util::{repo_init, RepositoryTestExtensions};
+    use cargo_semantic_release::SemanticReleaseConfig;
+    use semver::Version;
+
+    #[test]
+    fn without_a_version_tag_starts_from_0_0_0() {
+        // Given
+        let commit_messages = vec![":boom: introduce breaking change"];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages));
+
+        // When
+        let result = next_version(&repository, &SemanticReleaseConfig::default());
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(1, 0, 0));
+    }
+
+    #[test]
+    fn increments_from_the_latest_version_tag() {
+        // Given
+        let commit_messages = vec![":tada: initial release", ":bug: fix a bug"];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages));
+        let tagged_commit = repository
+            .find_commit_by_message(":tada: initial release")
+            .unwrap();
+        repository.add_tag(tagged_commit, "v1.2.3");
+
+        // When
+        let result = next_version(&repository, &SemanticReleaseConfig::default());
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(1, 2, 4));
+    }
 }
