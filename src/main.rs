@@ -1,5 +1,5 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::{Changes, RepositoryExtension, SemanticReleaseConfig};
+use cargo_semantic_release::{render_tag, Changes, RepositoryExtension, SemanticReleaseConfig};
 use clap::Parser;
 use clap_cargo::style;
 use git2::Repository;
@@ -26,7 +26,14 @@ struct SemanticReleaseArgs {
 #[derive(clap::Subcommand)]
 enum SemanticReleaseCommand {
     /// Compute and print the next semantic version derived from commit history
-    Version,
+    Version(VersionArgs),
+}
+
+#[derive(clap::Args)]
+struct VersionArgs {
+    /// Print the next version's tag (e.g. `v1.2.3`) instead of the bare version
+    #[arg(long)]
+    print_tag: bool,
 }
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
@@ -42,11 +49,11 @@ fn main() {
     let CargoCli::SemanticRelease(args) = CargoCli::parse();
 
     match args.command {
-        SemanticReleaseCommand::Version => run_version_command(),
+        SemanticReleaseCommand::Version(version_args) => run_version_command(version_args),
     }
 }
 
-fn run_version_command() {
+fn run_version_command(args: VersionArgs) {
     let path = env::current_dir().unwrap_or_else(|error| {
         eprintln!("Error during getting the current directory:\n\t{error}");
         process::exit(1);
@@ -67,7 +74,11 @@ fn run_version_command() {
         process::exit(1);
     });
 
-    println!("{version}");
+    if args.print_tag {
+        println!("{}", render_tag(&config.tag_format, &version));
+    } else {
+        println!("{version}");
+    }
 }
 
 /// Compute the next semantic version for `repository`, given `config`.

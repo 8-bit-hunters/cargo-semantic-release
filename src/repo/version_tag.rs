@@ -39,6 +39,15 @@ pub fn get_latest_version_tag(
     Ok(version_tags.iter().max().cloned())
 }
 
+/// Render `version` into a tag name, following `tag_format`.
+///
+/// The inverse of [`VersionTag::parse_version_from_tag_name`]: the literal `{version}`
+/// placeholder in `tag_format` is replaced with `version`, e.g. `render_tag("v{version}", ...)`
+/// for version `1.2.3` yields `"v1.2.3"`.
+pub fn render_tag(tag_format: &str, version: &Version) -> String {
+    tag_format.replace("{version}", &version.to_string())
+}
+
 trait AnnotatedTag {
     fn from_object(object: Object) -> Option<Tag>;
 }
@@ -110,6 +119,36 @@ impl VersionTag {
         );
         let captures = Regex::new(&pattern).ok()?.captures(tag_name)?;
         Version::parse(&captures[1]).ok()
+    }
+}
+
+#[cfg(test)]
+mod render_tag_tests {
+    use crate::repo::version_tag::render_tag;
+    use semver::Version;
+
+    #[test]
+    fn renders_the_default_tag_format() {
+        // Given
+        let version = Version::new(1, 2, 3);
+
+        // When
+        let result = render_tag("v{version}", &version);
+
+        // Then
+        assert_eq!(result, "v1.2.3");
+    }
+
+    #[test]
+    fn renders_a_custom_tag_format() {
+        // Given
+        let version = Version::new(1, 2, 3);
+
+        // When
+        let result = render_tag("release-{version}", &version);
+
+        // Then
+        assert_eq!(result, "release-1.2.3");
     }
 }
 
