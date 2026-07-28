@@ -161,9 +161,9 @@ fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
     }
 
     if args.print_tag {
-        println!("{}", render_tag(&config.tag_format, &version));
+        println!("Next version: {}", render_tag(&config.tag_format, &version));
     } else {
-        println!("{version}");
+        println!("Next version: {version}");
     }
 }
 
