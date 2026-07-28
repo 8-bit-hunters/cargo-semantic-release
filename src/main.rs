@@ -1,5 +1,7 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::{render_tag, Changes, RepositoryExtension, SemanticReleaseConfig};
+use cargo_semantic_release::{
+    render_tag, Changes, RepositoryExtension, SemanticReleaseConfig, SemanticVersionAction,
+};
 use clap::Parser;
 use clap_cargo::style;
 use git2::Repository;
@@ -34,6 +36,33 @@ struct VersionArgs {
     /// Print the next version's tag (e.g. `v1.2.3`) instead of the bare version
     #[arg(long)]
     print_tag: bool,
+
+    /// Force a major version bump instead of deriving it from commit history
+    #[arg(long, conflicts_with_all = ["minor", "patch"])]
+    major: bool,
+
+    /// Force a minor version bump instead of deriving it from commit history
+    #[arg(long, conflicts_with = "patch")]
+    minor: bool,
+
+    /// Force a patch version bump instead of deriving it from commit history
+    #[arg(long)]
+    patch: bool,
+}
+
+impl VersionArgs {
+    /// The [`SemanticVersionAction`] forced by `--major`/`--minor`/`--patch`, if any.
+    fn forced_action(&self) -> Option<SemanticVersionAction> {
+        if self.major {
+            Some(SemanticVersionAction::IncrementMajor)
+        } else if self.minor {
+            Some(SemanticVersionAction::IncrementMinor)
+        } else if self.patch {
+            Some(SemanticVersionAction::IncrementPatch)
+        } else {
+            None
+        }
+    }
 }
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
@@ -69,7 +98,7 @@ fn run_version_command(args: VersionArgs) {
         process::exit(1);
     });
 
-    let version = next_version(&git_repo, &config).unwrap_or_else(|error| {
+    let version = next_version(&git_repo, &config, args.forced_action()).unwrap_or_else(|error| {
         eprintln!("Error during computing the next version:\n\t{error}");
         process::exit(1);
     });
@@ -83,19 +112,23 @@ fn run_version_command(args: VersionArgs) {
 
 /// Compute the next semantic version for `repository`, given `config`.
 ///
-/// Combines the latest version tag (or `0.0.0` if there is none) with the
-/// [`SemanticVersionAction`](cargo_semantic_release::SemanticVersionAction) derived from the
-/// commits since that tag.
+/// Combines the latest version tag (or `0.0.0` if there is none) with a [`SemanticVersionAction`].
+/// `forced_action`, when given, is used as-is instead of deriving one from the commits since
+/// that tag, in which case the repository's commits aren't parsed at all.
 fn next_version(
     repository: &impl RepositoryExtension,
     config: &SemanticReleaseConfig,
+    forced_action: Option<SemanticVersionAction>,
 ) -> Result<Version, Box<dyn std::error::Error>> {
     let current_version = repository
         .get_latest_version_tag(&config.tag_format)?
         .map(|tag| tag.version)
         .unwrap_or_else(|| Version::new(0, 0, 0));
 
-    let action = Changes::from_repo(repository, config)?.define_action_for_semantic_version();
+    let action = match forced_action {
+        Some(action) => action,
+        None => Changes::from_repo(repository, config)?.define_action_for_semantic_version(),
+    };
 
     Ok(action.apply(&current_version))
 }
@@ -104,7 +137,7 @@ fn next_version(
 mod next_version_tests {
     use crate::next_version;
     use cargo_semantic_release::test_util::{repo_init, RepositoryTestExtensions};
-    use cargo_semantic_release::SemanticReleaseConfig;
+    use cargo_semantic_release::{SemanticReleaseConfig, SemanticVersionAction};
     use semver::Version;
 
     #[test]
@@ -114,7 +147,7 @@ mod next_version_tests {
         let (_temp_dir, repository) = repo_init(Some(commit_messages));
 
         // When
-        let result = next_version(&repository, &SemanticReleaseConfig::default());
+        let result = next_version(&repository, &SemanticReleaseConfig::default(), None);
 
         // Then
         assert_eq!(result.unwrap(), Version::new(1, 0, 0));
@@ -131,9 +164,46 @@ mod next_version_tests {
         repository.add_tag(tagged_commit, "v1.2.3");
 
         // When
-        let result = next_version(&repository, &SemanticReleaseConfig::default());
+        let result = next_version(&repository, &SemanticReleaseConfig::default(), None);
 
         // Then
         assert_eq!(result.unwrap(), Version::new(1, 2, 4));
+    }
+
+    #[test]
+    fn forced_action_overrides_the_commit_derived_one() {
+        // Given
+        let commit_messages = vec![":tada: initial release", ":bug: fix a bug"];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages));
+        let tagged_commit = repository
+            .find_commit_by_message(":tada: initial release")
+            .unwrap();
+        repository.add_tag(tagged_commit, "v1.2.3");
+
+        // When
+        let result = next_version(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            Some(SemanticVersionAction::IncrementMajor),
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(2, 0, 0));
+    }
+
+    #[test]
+    fn forced_action_does_not_require_any_commits_to_parse() {
+        // Given
+        let (_temp_dir, repository) = repo_init(None);
+
+        // When
+        let result = next_version(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            Some(SemanticVersionAction::IncrementPatch),
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(0, 0, 1));
     }
 }
