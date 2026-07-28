@@ -374,6 +374,14 @@ mod changes_tests {
                 Ok(self.latest_version_tag.clone())
             }
         }
+
+        fn head_commit_oid(&self) -> Result<Oid, Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
+        fn create_tag(&self, _name: &str, _target_oid: Oid) -> Result<Oid, Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
     }
 
     impl MockedRepository {

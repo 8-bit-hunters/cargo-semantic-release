@@ -94,15 +94,16 @@ fn main() {
     }
 
     let verbosity = args.verbose;
+    let noop = args.noop;
 
     match args.command {
         SemanticReleaseCommand::Version(version_args) => {
-            run_version_command(version_args, verbosity)
+            run_version_command(version_args, verbosity, noop)
         }
     }
 }
 
-fn run_version_command(args: VersionArgs, verbosity: u8) {
+fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
     let path = env::current_dir().unwrap_or_else(|error| {
         eprintln!("Error during getting the current directory:\n\t{error}");
         process::exit(1);
@@ -115,6 +116,12 @@ fn run_version_command(args: VersionArgs, verbosity: u8) {
 
     let git_repo = Repository::open(&path).unwrap_or_else(|error| {
         eprintln!("Error during opening repository:\n\t{error}");
+        process::exit(1);
+    });
+
+    let cargo_toml_path = path.join("Cargo.toml");
+    let cargo_toml_version = version::get_cargo_version(&cargo_toml_path).unwrap_or_else(|error| {
+        eprintln!("Error during reading Cargo.toml:\n\t{error}");
         process::exit(1);
     });
 
@@ -134,10 +141,24 @@ fn run_version_command(args: VersionArgs, verbosity: u8) {
         println!("Commits since the last version tag:\n{changes}");
     }
 
-    let version = next_version(&git_repo, &config, args.forced_action()).unwrap_or_else(|error| {
+    let version = next_version(
+        &git_repo,
+        &config,
+        &cargo_toml_version,
+        args.forced_action(),
+        noop,
+    )
+    .unwrap_or_else(|error| {
         eprintln!("Error during computing the next version:\n\t{error}");
         process::exit(1);
     });
+
+    if !noop {
+        version::set_cargo_version(&cargo_toml_path, &version).unwrap_or_else(|error| {
+            eprintln!("Error during writing Cargo.toml:\n\t{error}");
+            process::exit(1);
+        });
+    }
 
     if args.print_tag {
         println!("{}", render_tag(&config.tag_format, &version));
@@ -160,20 +181,40 @@ fn current_version(
 
 /// Compute the next semantic version for `repository`, given `config`.
 ///
-/// Combines [`current_version`] with a [`SemanticVersionAction`]. `forced_action`, when given,
-/// is used as-is instead of deriving one from the commits since that tag, in which case the
-/// repository's commits aren't parsed at all.
+/// Combines a baseline version with a [`SemanticVersionAction`]. `forced_action`, when given,
+/// is used as-is instead of deriving one from the commits since the latest tag, in which case
+/// the repository's commits aren't parsed at all.
+///
+/// The baseline is normally [`current_version`] (the latest tag). But if `cargo_toml_version`
+/// (the version currently declared in `Cargo.toml`) is *ahead* of that, the tag history is
+/// missing a tag for it, e.g. it was bumped by hand without tagging. In that case a catch-up
+/// tag for `cargo_toml_version` is created at `HEAD` (skipped when `noop` is set, though the
+/// returned version is computed the same way either way), and it becomes the baseline instead.
 fn next_version(
     repository: &impl RepositoryExtension,
     config: &SemanticReleaseConfig,
+    cargo_toml_version: &Version,
     forced_action: Option<SemanticVersionAction>,
+    noop: bool,
 ) -> Result<Version, Box<dyn std::error::Error>> {
     let action = match forced_action {
         Some(action) => action,
         None => Changes::from_repo(repository, config)?.define_action_for_semantic_version(),
     };
 
-    Ok(action.apply(&current_version(repository, config)?))
+    let tag_based_current_version = current_version(repository, config)?;
+
+    let baseline = if cargo_toml_version > &tag_based_current_version {
+        if !noop {
+            let tag_name = render_tag(&config.tag_format, cargo_toml_version);
+            repository.create_tag(&tag_name, repository.head_commit_oid()?)?;
+        }
+        cargo_toml_version.clone()
+    } else {
+        tag_based_current_version
+    };
+
+    Ok(action.apply(&baseline))
 }
 
 #[cfg(test)]
@@ -215,7 +256,9 @@ mod current_version_tests {
 mod next_version_tests {
     use crate::next_version;
     use cargo_semantic_release::test_util::{repo_init, RepositoryTestExtensions};
-    use cargo_semantic_release::{SemanticReleaseConfig, SemanticVersionAction};
+    use cargo_semantic_release::{
+        RepositoryExtension, SemanticReleaseConfig, SemanticVersionAction,
+    };
     use semver::Version;
 
     #[test]
@@ -225,7 +268,13 @@ mod next_version_tests {
         let (_temp_dir, repository) = repo_init(Some(commit_messages));
 
         // When
-        let result = next_version(&repository, &SemanticReleaseConfig::default(), None);
+        let result = next_version(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            &Version::new(0, 0, 0),
+            None,
+            false,
+        );
 
         // Then
         assert_eq!(result.unwrap(), Version::new(1, 0, 0));
@@ -242,7 +291,13 @@ mod next_version_tests {
         repository.add_tag(tagged_commit, "v1.2.3");
 
         // When
-        let result = next_version(&repository, &SemanticReleaseConfig::default(), None);
+        let result = next_version(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            &Version::new(0, 0, 0),
+            None,
+            false,
+        );
 
         // Then
         assert_eq!(result.unwrap(), Version::new(1, 2, 4));
@@ -262,7 +317,9 @@ mod next_version_tests {
         let result = next_version(
             &repository,
             &SemanticReleaseConfig::default(),
+            &Version::new(0, 0, 0),
             Some(SemanticVersionAction::IncrementMajor),
+            false,
         );
 
         // Then
@@ -278,10 +335,108 @@ mod next_version_tests {
         let result = next_version(
             &repository,
             &SemanticReleaseConfig::default(),
+            &Version::new(0, 0, 0),
             Some(SemanticVersionAction::IncrementPatch),
+            false,
         );
 
         // Then
         assert_eq!(result.unwrap(), Version::new(0, 0, 1));
+    }
+
+    #[test]
+    fn does_not_reconcile_when_cargo_toml_version_is_not_ahead_of_the_latest_tag() {
+        // Given
+        let commit_messages = vec![":tada: initial release", ":bug: fix a bug"];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages));
+        let tagged_commit = repository
+            .find_commit_by_message(":tada: initial release")
+            .unwrap();
+        repository.add_tag(tagged_commit, "v1.0.0");
+
+        // When
+        let result = next_version(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            &Version::new(1, 0, 0),
+            None,
+            false,
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(1, 0, 1));
+        assert_eq!(
+            repository
+                .get_latest_version_tag("v{version}")
+                .unwrap()
+                .unwrap()
+                .version,
+            Version::new(1, 0, 0),
+            "no catch-up tag should have been created"
+        );
+    }
+
+    #[test]
+    fn reconciles_when_cargo_toml_version_is_ahead_of_the_latest_tag() {
+        // Given
+        let commit_messages = vec![":tada: initial release", ":bug: fix a bug"];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages));
+        let tagged_commit = repository
+            .find_commit_by_message(":tada: initial release")
+            .unwrap();
+        repository.add_tag(tagged_commit, "v1.0.0");
+
+        // When
+        let result = next_version(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            &Version::new(2, 0, 0),
+            None,
+            false,
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(2, 0, 1));
+        assert_eq!(
+            repository
+                .get_latest_version_tag("v{version}")
+                .unwrap()
+                .unwrap()
+                .version,
+            Version::new(2, 0, 0),
+            "a catch-up tag for the Cargo.toml version should have been created"
+        );
+    }
+
+    #[test]
+    fn noop_reconciliation_computes_the_version_without_creating_the_catch_up_tag() {
+        // Given
+        let commit_messages = vec![":tada: initial release", ":bug: fix a bug"];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages));
+        let tagged_commit = repository
+            .find_commit_by_message(":tada: initial release")
+            .unwrap();
+        repository.add_tag(tagged_commit, "v1.0.0");
+
+        // When
+        let result = next_version(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            &Version::new(2, 0, 0),
+            None,
+            true,
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(2, 0, 1));
+        assert_eq!(
+            repository
+                .get_latest_version_tag("v{version}")
+                .unwrap()
+                .unwrap()
+                .version,
+            Version::new(1, 0, 0),
+            "--noop should not have created the catch-up tag"
+        );
     }
 }
