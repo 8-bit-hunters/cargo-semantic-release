@@ -307,6 +307,7 @@ mod changes_tests {
     use git2::Oid;
     use semver::Version;
     use std::error::Error;
+    use std::path::Path;
 
     struct MockedRepository {
         commits: Vec<GitmojiCommit>,
@@ -387,6 +388,10 @@ mod changes_tests {
         }
 
         fn create_tag(&self, _name: &str, _target_oid: Oid) -> Result<Oid, Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
+        fn commit_file(&self, _path: &Path, _message: &str) -> Result<Oid, Box<dyn Error>> {
             unimplemented!("not exercised by these tests")
         }
     }

@@ -6,6 +6,7 @@ use clap::Parser;
 use clap_cargo::style;
 use git2::Repository;
 use semver::Version;
+use std::path::Path;
 use std::{env, process};
 
 mod version;
@@ -56,6 +57,10 @@ struct VersionArgs {
     /// Force a patch version bump instead of deriving it from commit history
     #[arg(long)]
     patch: bool,
+
+    /// Skip creating a commit for the version bump
+    #[arg(long)]
+    no_commit: bool,
 }
 
 impl VersionArgs {
@@ -156,7 +161,7 @@ fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
         println!("Commits since the last version tag:\n{changes}");
     }
 
-    let version = next_version(
+    let (version, catch_up_tag) = next_version(
         &git_repo,
         &config,
         &cargo_toml_version,
@@ -168,11 +173,30 @@ fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
         process::exit(1);
     });
 
+    if verbosity >= 1 {
+        if let Some(tag_name) = &catch_up_tag {
+            println!("Created catch-up tag: {tag_name}");
+        }
+    }
+
     if !noop {
         version::set_cargo_version(&cargo_toml_path, &version).unwrap_or_else(|error| {
             eprintln!("Error during writing Cargo.toml:\n\t{error}");
             process::exit(1);
         });
+
+        if !args.no_commit {
+            let commit_message = format!(
+                ":bookmark: Bump release version to {}",
+                render_tag(&config.tag_format, &version)
+            );
+            git_repo
+                .commit_file(Path::new("Cargo.toml"), &commit_message)
+                .unwrap_or_else(|error| {
+                    eprintln!("Error during committing the version bump:\n\t{error}");
+                    process::exit(1);
+                });
+        }
     }
 
     if args.print_tag {
@@ -212,13 +236,18 @@ fn current_version(
 /// missing a tag for it, e.g. it was bumped by hand without tagging. In that case a catch-up
 /// tag for `cargo_toml_version` is created at `HEAD` (skipped when `noop` is set, though the
 /// returned version is computed the same way either way), and it becomes the baseline instead.
+///
+/// ## Returns
+///
+/// The next [`Version`], and the name of the catch-up tag if one was created (`None` if `noop`
+/// was set or no reconciliation was needed).
 fn next_version(
     repository: &impl RepositoryExtension,
     config: &SemanticReleaseConfig,
     cargo_toml_version: &Version,
     forced_action: Option<SemanticVersionAction>,
     noop: bool,
-) -> Result<Version, Box<dyn std::error::Error>> {
+) -> Result<(Version, Option<String>), Box<dyn std::error::Error>> {
     let action = match forced_action {
         Some(action) => action,
         None => Changes::from_repo(repository, config)?.define_action_for_semantic_version(),
@@ -226,17 +255,25 @@ fn next_version(
 
     let tag_based_current_version = current_version(repository, config)?;
 
+    let mut catch_up_tag = None;
+
     let baseline = if cargo_toml_version > &tag_based_current_version {
+        let tag_name = render_tag(&config.tag_format, cargo_toml_version);
         if !noop {
-            let tag_name = render_tag(&config.tag_format, cargo_toml_version);
-            repository.create_tag(&tag_name, repository.head_commit_oid()?)?;
+            let head_commit_oid = repository.head_commit_oid().map_err(|error| {
+                format!("failed to resolve HEAD while creating catch-up tag '{tag_name}': {error}")
+            })?;
+            repository
+                .create_tag(&tag_name, head_commit_oid)
+                .map_err(|error| format!("failed to create catch-up tag '{tag_name}': {error}"))?;
+            catch_up_tag = Some(tag_name);
         }
         cargo_toml_version.clone()
     } else {
         tag_based_current_version
     };
 
-    Ok(action.apply(&baseline))
+    Ok((action.apply(&baseline), catch_up_tag))
 }
 
 #[cfg(test)]
@@ -316,7 +353,7 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), Version::new(1, 0, 0));
+        assert_eq!(result.unwrap(), (Version::new(1, 0, 0), None));
     }
 
     #[test]
@@ -339,7 +376,7 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), Version::new(1, 2, 4));
+        assert_eq!(result.unwrap(), (Version::new(1, 2, 4), None));
     }
 
     #[test]
@@ -362,7 +399,7 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), Version::new(2, 0, 0));
+        assert_eq!(result.unwrap(), (Version::new(2, 0, 0), None));
     }
 
     #[test]
@@ -380,7 +417,7 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), Version::new(0, 0, 1));
+        assert_eq!(result.unwrap(), (Version::new(0, 0, 1), None));
     }
 
     #[test]
@@ -403,7 +440,7 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), Version::new(1, 0, 1));
+        assert_eq!(result.unwrap(), (Version::new(1, 0, 1), None));
         assert_eq!(
             repository
                 .get_latest_version_tag("v{version}")
@@ -435,7 +472,13 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), Version::new(2, 0, 1));
+        let (version, catch_up_tag) = result.unwrap();
+        assert_eq!(version, Version::new(2, 0, 1));
+        assert_eq!(
+            catch_up_tag.as_deref(),
+            Some("v2.0.0"),
+            "the created catch-up tag's name should have been returned"
+        );
         assert_eq!(
             repository
                 .get_latest_version_tag("v{version}")
@@ -467,7 +510,7 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), Version::new(2, 0, 1));
+        assert_eq!(result.unwrap(), (Version::new(2, 0, 1), None));
         assert_eq!(
             repository
                 .get_latest_version_tag("v{version}")

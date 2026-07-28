@@ -8,6 +8,7 @@ use crate::repo::prelude::RepositoryExtension;
 use crate::repo::version_tag::{get_all_version_tags, get_latest_version_tag};
 use git2::{Oid, Repository};
 use std::error::Error;
+use std::path::Path;
 use version_tag::VersionTag;
 
 pub mod prelude {
@@ -17,6 +18,7 @@ pub mod prelude {
     pub use crate::repo::version_tag::{render_tag, VersionTag};
     use git2::Oid;
     use std::error::Error;
+    use std::path::Path;
 
     pub trait RepositoryExtension {
         fn fetch_commits_until(&self, stop_oid: Oid) -> Result<Vec<Commit>, Box<dyn Error>>;
@@ -32,6 +34,9 @@ pub mod prelude {
         fn head_commit_oid(&self) -> Result<Oid, Box<dyn Error>>;
         /// Create an annotated tag named `name` pointing at `target_oid`.
         fn create_tag(&self, name: &str, target_oid: Oid) -> Result<Oid, Box<dyn Error>>;
+        /// Commit `path`'s current working-directory content as a new commit on `HEAD`, with
+        /// `HEAD`'s current commit as its sole parent.
+        fn commit_file(&self, path: &Path, message: &str) -> Result<Oid, Box<dyn Error>>;
     }
 }
 
@@ -63,6 +68,25 @@ impl RepositoryExtension for Repository {
         let object = self.find_object(target_oid, None)?;
         let signature = self.signature()?;
         Ok(self.tag(name, &object, &signature, "", false)?)
+    }
+
+    fn commit_file(&self, path: &Path, message: &str) -> Result<Oid, Box<dyn Error>> {
+        let mut index = self.index()?;
+        index.add_path(path)?;
+        index.write()?;
+        let tree = self.find_tree(index.write_tree()?)?;
+
+        let signature = self.signature()?;
+        let parent = self.head()?.peel_to_commit()?;
+
+        Ok(self.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &[&parent],
+        )?)
     }
 }
 
@@ -105,5 +129,46 @@ mod repository_extension_write_tests {
             .unwrap();
         assert_eq!(result.version, Version::new(1, 2, 3));
         assert_eq!(result.commit_oid, head_oid);
+    }
+
+    #[test]
+    fn commit_file_creates_a_commit_with_the_given_message_as_head_s_new_parent() {
+        // Given
+        let (temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let previous_head_oid = repository.head_commit_oid().unwrap();
+        std::fs::write(temp_dir.path().join("Cargo.toml"), "version = \"2.0.0\"\n").unwrap();
+
+        // When
+        let result = repository
+            .commit_file(
+                std::path::Path::new("Cargo.toml"),
+                ":bookmark: Bump release version to v2.0.0",
+            )
+            .unwrap();
+
+        // Then
+        assert_eq!(repository.head_commit_oid().unwrap(), result);
+        let commit = repository.find_commit_by_message(":bookmark: Bump release version to v2.0.0");
+        assert!(commit.is_some());
+        assert_eq!(commit.unwrap().parent_id(0).unwrap(), previous_head_oid);
+    }
+
+    #[test]
+    fn commit_file_includes_the_file_s_current_working_directory_content() {
+        // Given
+        let (temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        std::fs::write(temp_dir.path().join("Cargo.toml"), "version = \"2.0.0\"\n").unwrap();
+
+        // When
+        let result = repository
+            .commit_file(std::path::Path::new("Cargo.toml"), "bump")
+            .unwrap();
+
+        // Then
+        let commit = repository.find_commit(result).unwrap();
+        let tree = commit.tree().unwrap();
+        let entry = tree.get_path(std::path::Path::new("Cargo.toml")).unwrap();
+        let blob = repository.find_blob(entry.id()).unwrap();
+        assert_eq!(blob.content(), b"version = \"2.0.0\"\n");
     }
 }
