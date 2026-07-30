@@ -49,7 +49,9 @@ pub fn read(git_dir: &Path) -> Result<Option<LastRunState>, String> {
         return Ok(None);
     }
     let contents = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
-    toml::from_str(&contents).map(Some).map_err(|error| error.to_string())
+    toml::from_str(&contents)
+        .map(Some)
+        .map_err(|error| error.to_string())
 }
 
 /// Remove the state file, e.g. after a successful `undo`.

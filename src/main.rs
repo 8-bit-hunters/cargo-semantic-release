@@ -139,6 +139,9 @@ fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
         eprintln!("Error during reading Cargo.toml:\n\t{error}");
         process::exit(1);
     });
+    if should_print_cargo_toml_version(verbosity) {
+        println!("Cargo.toml version: {cargo_toml_version}");
+    }
 
     let mut found_tags = git_repo
         .get_all_version_tags(&config.tag_format)
@@ -156,13 +159,17 @@ fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
             .collect::<Vec<_>>()
             .join(", ")
     };
-    println!("Found tags: {found_tags_display}");
+    if should_print_found_tags(verbosity) {
+        println!("Found tags: {found_tags_display}");
+    }
 
     let repo_current_version = current_version(&git_repo, &config).unwrap_or_else(|error| {
         eprintln!("Error during fetching the current version:\n\t{error}");
         process::exit(1);
     });
-    println!("Current version: {repo_current_version}");
+    if should_print_latest_tags_version(verbosity) {
+        println!("Latest tag version: {repo_current_version}");
+    }
 
     if should_print_commit_log(verbosity) {
         let changes = Changes::from_repo(&git_repo, &config).unwrap_or_else(|error| {
@@ -240,6 +247,27 @@ fn should_print_commit_log(verbosity: u8) -> bool {
     verbosity >= 2
 }
 
+/// Whether the `Cargo.toml` version should be printed, given `verbosity`.
+///
+/// Requires `-v` (or higher).
+fn should_print_cargo_toml_version(verbosity: u8) -> bool {
+    verbosity >= 1
+}
+
+/// Whether the found tags should be printed, given `verbosity`.
+///
+/// Requires `-v` (or higher).
+fn should_print_found_tags(verbosity: u8) -> bool {
+    verbosity >= 1
+}
+
+/// Whether the latest tag version should be printed, given `verbosity`.
+///
+/// Requires `-v` (or higher).
+fn should_print_latest_tags_version(verbosity: u8) -> bool {
+    verbosity >= 1
+}
+
 fn run_undo_command(args: UndoArgs, noop: bool) {
     let path = env::current_dir().unwrap_or_else(|error| {
         eprintln!("Error during getting the current directory:\n\t{error}");
@@ -309,7 +337,9 @@ fn perform_undo(
 ) -> Result<(), String> {
     if let Some(commit_oid) = &state.commit_oid {
         let commit_oid = Oid::from_str(commit_oid).map_err(|error| error.to_string())?;
-        let head_oid = repository.head_commit_oid().map_err(|error| error.to_string())?;
+        let head_oid = repository
+            .head_commit_oid()
+            .map_err(|error| error.to_string())?;
         if commit_oid != head_oid && !force {
             return Err(format!(
                 "HEAD has moved since the version-bump commit ({commit_oid}) was created; \
@@ -395,8 +425,13 @@ fn next_version(
             repository
                 .create_tag(&tag_name, head_commit_oid)
                 .map_err(|error| format!("failed to create catch-up tag '{tag_name}': {error}"))?;
-            catch_up_tag = Some(tag_name);
+            catch_up_tag = Some(tag_name.clone());
         }
+        println!(
+            "Since Cargo.toml ({cargo_toml_version}) > latest tag version \
+            ({tag_based_current_version}), current version is {}",
+            tag_name
+        );
         cargo_toml_version.clone()
     } else {
         tag_based_current_version
@@ -419,6 +454,54 @@ mod should_print_commit_log_tests {
     fn is_true_at_double_verbose_or_more() {
         assert!(should_print_commit_log(2));
         assert!(should_print_commit_log(3));
+    }
+}
+
+#[cfg(test)]
+mod should_print_cargo_toml_version_tests {
+    use crate::should_print_cargo_toml_version;
+
+    #[test]
+    fn is_false_without_verbose() {
+        assert!(!should_print_cargo_toml_version(0));
+    }
+
+    #[test]
+    fn is_true_at_verbose_or_more() {
+        assert!(should_print_cargo_toml_version(1));
+        assert!(should_print_cargo_toml_version(2));
+    }
+}
+
+#[cfg(test)]
+mod should_print_found_tags_tests {
+    use crate::should_print_found_tags;
+
+    #[test]
+    fn is_false_without_verbose() {
+        assert!(!should_print_found_tags(0));
+    }
+
+    #[test]
+    fn is_true_at_verbose_or_more() {
+        assert!(should_print_found_tags(1));
+        assert!(should_print_found_tags(2));
+    }
+}
+
+#[cfg(test)]
+mod should_print_latest_tags_version_tests {
+    use crate::should_print_latest_tags_version;
+
+    #[test]
+    fn is_false_without_verbose() {
+        assert!(!should_print_latest_tags_version(0));
+    }
+
+    #[test]
+    fn is_true_at_verbose_or_more() {
+        assert!(should_print_latest_tags_version(1));
+        assert!(should_print_latest_tags_version(2));
     }
 }
 
