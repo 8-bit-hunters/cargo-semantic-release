@@ -10,6 +10,7 @@ pub struct LastRunState {
     pub new_version: String,
     pub commit_oid: Option<String>,
     pub catch_up_tag: Option<String>,
+    pub release_tag: Option<String>,
 }
 
 impl LastRunState {
@@ -18,12 +19,14 @@ impl LastRunState {
         new_version: &Version,
         commit_oid: Option<Oid>,
         catch_up_tag: Option<String>,
+        release_tag: Option<String>,
     ) -> Self {
         Self {
             previous_version: previous_version.to_string(),
             new_version: new_version.to_string(),
             commit_oid: commit_oid.map(|oid| oid.to_string()),
             catch_up_tag,
+            release_tag,
         }
     }
 }
@@ -81,6 +84,7 @@ mod last_run_state_tests {
             &previous_version,
             &new_version,
             Some(commit_oid),
+            Some("v1.0.0".to_string()),
             Some("v1.3.0".to_string()),
         );
 
@@ -91,17 +95,25 @@ mod last_run_state_tests {
             result.commit_oid,
             Some("0123456789abcdef0123456789abcdef01234567".to_string())
         );
-        assert_eq!(result.catch_up_tag, Some("v1.3.0".to_string()));
+        assert_eq!(result.catch_up_tag, Some("v1.0.0".to_string()));
+        assert_eq!(result.release_tag, Some("v1.3.0".to_string()));
     }
 
     #[test]
     fn leaves_commit_oid_none_when_no_commit_was_made() {
         // Given / When
-        let result = LastRunState::new(&Version::new(1, 0, 0), &Version::new(1, 1, 0), None, None);
+        let result = LastRunState::new(
+            &Version::new(1, 0, 0),
+            &Version::new(1, 1, 0),
+            None,
+            None,
+            None,
+        );
 
         // Then
         assert_eq!(result.commit_oid, None);
         assert_eq!(result.catch_up_tag, None);
+        assert_eq!(result.release_tag, None);
     }
 }
 
@@ -116,6 +128,7 @@ mod tests {
             new_version: "1.3.0".to_string(),
             commit_oid: Some("abc123".to_string()),
             catch_up_tag: None,
+            release_tag: Some("v1.3.0".to_string()),
         }
     }
 
@@ -155,6 +168,7 @@ mod tests {
             new_version: "2.1.0".to_string(),
             commit_oid: None,
             catch_up_tag: Some("v2.0.0".to_string()),
+            release_tag: Some("v2.1.0".to_string()),
         };
 
         // When

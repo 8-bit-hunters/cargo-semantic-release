@@ -150,14 +150,14 @@ fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
             process::exit(1);
         });
     found_tags.sort();
-    let found_tags_display = if found_tags.is_empty() {
+    let found_tag_names: Vec<String> = found_tags
+        .iter()
+        .map(|tag| render_tag(&config.tag_format, &tag.version))
+        .collect();
+    let found_tags_display = if found_tag_names.is_empty() {
         "none".to_string()
     } else {
-        found_tags
-            .iter()
-            .map(|tag| render_tag(&config.tag_format, &tag.version))
-            .collect::<Vec<_>>()
-            .join(", ")
+        found_tag_names.join(", ")
     };
     if should_print_found_tags(verbosity) {
         println!("Found tags: {found_tags_display}");
@@ -220,11 +220,33 @@ fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
             None
         };
 
+        let release_tag = commit_oid.and_then(|commit_oid| {
+            create_release_tag(
+                &git_repo,
+                &config.tag_format,
+                &version,
+                commit_oid,
+                &found_tag_names,
+                &catch_up_tag,
+            )
+            .unwrap_or_else(|error| {
+                eprintln!("Error during creating the release tag:\n\t{error}");
+                process::exit(1);
+            })
+        });
+
+        if verbosity >= 1 {
+            if let Some(tag_name) = &release_tag {
+                println!("Created tag: {tag_name}");
+            }
+        }
+
         let last_run_state = undo_state::LastRunState::new(
             &cargo_toml_version,
             &version,
             commit_oid,
             catch_up_tag.clone(),
+            release_tag,
         );
         let git_dir = git_repo.path();
         undo_state::write(git_dir, &last_run_state).unwrap_or_else(|error| {
@@ -301,6 +323,9 @@ fn run_undo_command(args: UndoArgs, noop: bool) {
         if let Some(tag_name) = &state.catch_up_tag {
             println!("Would remove the catch-up tag {tag_name}.");
         }
+        if let Some(tag_name) = &state.release_tag {
+            println!("Would remove the release tag {tag_name}.");
+        }
         return;
     }
 
@@ -322,10 +347,14 @@ fn run_undo_command(args: UndoArgs, noop: bool) {
     if let Some(tag_name) = &state.catch_up_tag {
         println!("Removed the catch-up tag {tag_name}.");
     }
+    if let Some(tag_name) = &state.release_tag {
+        println!("Removed the release tag {tag_name}.");
+    }
 }
 
 /// Reverse the repository-facing effects recorded in `state`: restore `cargo_toml_path`'s
-/// declared version and, if a bump commit or catch-up tag were created, undo those too.
+/// declared version and, if a bump commit, catch-up tag, or release tag were created, undo
+/// those too.
 ///
 /// Refuses (returning `Err` without changing anything) if `state` recorded a bump commit and
 /// `HEAD` no longer points at it, unless `force` is set.
@@ -364,6 +393,12 @@ fn perform_undo(
     }
 
     if let Some(tag_name) = &state.catch_up_tag {
+        repository
+            .delete_tag(tag_name)
+            .map_err(|error| error.to_string())?;
+    }
+
+    if let Some(tag_name) = &state.release_tag {
         repository
             .delete_tag(tag_name)
             .map_err(|error| error.to_string())?;
@@ -438,6 +473,109 @@ fn next_version(
     };
 
     Ok((action.apply(&baseline), catch_up_tag))
+}
+
+/// Create the release tag for `version` at `commit_oid`, unless it's already covered by a tag
+/// found in `found_tag_names` or by this run's `catch_up_tag`.
+///
+/// ## Returns
+///
+/// The tag's name if one was created, `None` if `version` was already tagged.
+fn create_release_tag(
+    repository: &impl RepositoryExtension,
+    tag_format: &str,
+    version: &Version,
+    commit_oid: Oid,
+    found_tag_names: &[String],
+    catch_up_tag: &Option<String>,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let tag_name = render_tag(tag_format, version);
+    let already_tagged = catch_up_tag.as_deref() == Some(tag_name.as_str())
+        || found_tag_names.iter().any(|name| name == &tag_name);
+    if already_tagged {
+        return Ok(None);
+    }
+    repository.create_tag(&tag_name, commit_oid)?;
+    Ok(Some(tag_name))
+}
+
+#[cfg(test)]
+mod create_release_tag_tests {
+    use crate::create_release_tag;
+    use cargo_semantic_release::test_util::repo_init;
+    use cargo_semantic_release::RepositoryExtension;
+    use semver::Version;
+
+    #[test]
+    fn creates_a_tag_at_the_given_commit_when_none_exists_for_the_version() {
+        // Given
+        let (_temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let commit_oid = repository.head_commit_oid().unwrap();
+
+        // When
+        let result = create_release_tag(
+            &repository,
+            "v{version}",
+            &Version::new(1, 1, 0),
+            commit_oid,
+            &[],
+            &None,
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), Some("v1.1.0".to_string()));
+        let tags = repository.get_all_version_tags("v{version}").unwrap();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].version, Version::new(1, 1, 0));
+    }
+
+    #[test]
+    fn skips_when_the_version_is_already_in_found_tags() {
+        // Given
+        let (_temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let commit_oid = repository.head_commit_oid().unwrap();
+
+        // When
+        let result = create_release_tag(
+            &repository,
+            "v{version}",
+            &Version::new(1, 1, 0),
+            commit_oid,
+            &["v1.1.0".to_string()],
+            &None,
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), None);
+        assert!(repository
+            .get_all_version_tags("v{version}")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn skips_when_the_version_matches_this_run_s_catch_up_tag() {
+        // Given
+        let (_temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let commit_oid = repository.head_commit_oid().unwrap();
+
+        // When
+        let result = create_release_tag(
+            &repository,
+            "v{version}",
+            &Version::new(1, 1, 0),
+            commit_oid,
+            &[],
+            &Some("v1.1.0".to_string()),
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), None);
+        assert!(repository
+            .get_all_version_tags("v{version}")
+            .unwrap()
+            .is_empty());
+    }
 }
 
 #[cfg(test)]
@@ -541,6 +679,7 @@ mod perform_undo_tests {
             &Version::new(1, 1, 0),
             Some(bump_commit_oid),
             Some("v1.0.0".to_string()),
+            None,
         );
 
         // When
@@ -560,6 +699,48 @@ mod perform_undo_tests {
     }
 
     #[test]
+    fn removes_the_release_tag() {
+        // Given
+        let (temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let cargo_toml_path = temp_dir.path().join("Cargo.toml");
+        std::fs::write(
+            &cargo_toml_path,
+            "[package]\nname = \"foo\"\nversion = \"1.0.0\"\n",
+        )
+        .unwrap();
+        let pre_bump_head = repository.head_commit_oid().unwrap();
+
+        std::fs::write(
+            &cargo_toml_path,
+            "[package]\nname = \"foo\"\nversion = \"1.1.0\"\n",
+        )
+        .unwrap();
+        let bump_commit_oid = repository
+            .commit_file(Path::new("Cargo.toml"), "bump")
+            .unwrap();
+        repository.create_tag("v1.1.0", bump_commit_oid).unwrap();
+
+        let state = LastRunState::new(
+            &Version::new(1, 0, 0),
+            &Version::new(1, 1, 0),
+            Some(bump_commit_oid),
+            None,
+            Some("v1.1.0".to_string()),
+        );
+
+        // When
+        let result = perform_undo(&repository, &cargo_toml_path, &state, false);
+
+        // Then
+        assert!(result.is_ok(), "{:?}", result);
+        assert_eq!(repository.head_commit_oid().unwrap(), pre_bump_head);
+        assert!(repository
+            .get_all_version_tags("v{version}")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
     fn only_restores_cargo_toml_when_no_commit_was_recorded() {
         // Given
         let (temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
@@ -571,7 +752,13 @@ mod perform_undo_tests {
         .unwrap();
         let head_before = repository.head_commit_oid().unwrap();
 
-        let state = LastRunState::new(&Version::new(1, 0, 0), &Version::new(1, 1, 0), None, None);
+        let state = LastRunState::new(
+            &Version::new(1, 0, 0),
+            &Version::new(1, 1, 0),
+            None,
+            None,
+            None,
+        );
 
         // When
         let result = perform_undo(&repository, &cargo_toml_path, &state, false);
@@ -604,6 +791,7 @@ mod perform_undo_tests {
             &Version::new(1, 0, 0),
             &Version::new(1, 1, 0),
             Some(bump_commit_oid),
+            None,
             None,
         );
 
@@ -644,6 +832,7 @@ mod perform_undo_tests {
             &Version::new(1, 0, 0),
             &Version::new(1, 1, 0),
             Some(bump_commit_oid),
+            None,
             None,
         );
 
