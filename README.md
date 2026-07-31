@@ -47,6 +47,16 @@ Other flags for `version`:
 - `--no-push` — skip pushing the bump commit and any created tags to `origin`.
 - `--print-tag` — print the next version's tag (e.g. `v1.2.3`) instead of the bare version.
 
+### Undoing a run
+
+```shell
+cargo semantic-release undo
+```
+
+Restores `Cargo.toml` to its previous version and removes the bump commit and any tags `version`
+created, deleting those tags from `origin` too if they were pushed. It refuses to undo if `HEAD`
+has moved since the bump commit was created; pass `--force` to undo anyway.
+
 ### Running in CI
 
 `cargo semantic-release version` commits the bump and pushes it, so it needs `HEAD` checked
