@@ -69,7 +69,7 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
         println!("Commits since the last version tag:\n{changes}");
     }
 
-    let (version, catch_up_tag) = next_version(
+    let (version, catch_up_tag, action) = next_version(
         &git_repo,
         &config,
         &cargo_toml_version,
@@ -93,56 +93,61 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
             process::exit(1);
         });
 
-        let commit_oid = if !args.no_commit {
-            let commit_message = format!(
-                ":bookmark: Bump release version to {}",
-                render_tag(&config.tag_format, &version)
-            );
-            Some(
-                git_repo
-                    .commit_file(Path::new("Cargo.toml"), &commit_message)
-                    .unwrap_or_else(|error| {
-                        eprintln!("Error during committing the version bump:\n\t{error}");
-                        process::exit(1);
-                    }),
-            )
-        } else {
-            None
-        };
+        // A `Keep` action means there's nothing new to release: skip the bump commit, release
+        // tag, and undo-state write, so a run with no bump-worthy commits doesn't create an
+        // empty commit or clobber the state left by the last real bump.
+        if action != SemanticVersionAction::Keep {
+            let commit_oid = if !args.no_commit {
+                let commit_message = format!(
+                    ":bookmark: Bump release version to {}",
+                    render_tag(&config.tag_format, &version)
+                );
+                Some(
+                    git_repo
+                        .commit_file(Path::new("Cargo.toml"), &commit_message)
+                        .unwrap_or_else(|error| {
+                            eprintln!("Error during committing the version bump:\n\t{error}");
+                            process::exit(1);
+                        }),
+                )
+            } else {
+                None
+            };
 
-        let release_tag = commit_oid.and_then(|commit_oid| {
-            crate::create_release_tag(
-                &git_repo,
-                &config.tag_format,
+            let release_tag = commit_oid.and_then(|commit_oid| {
+                crate::create_release_tag(
+                    &git_repo,
+                    &config.tag_format,
+                    &version,
+                    commit_oid,
+                    &found_tag_names,
+                    &catch_up_tag,
+                )
+                .unwrap_or_else(|error| {
+                    eprintln!("Error during creating the release tag:\n\t{error}");
+                    process::exit(1);
+                })
+            });
+
+            if verbosity >= 1 {
+                if let Some(tag_name) = &release_tag {
+                    println!("Created tag: {tag_name}");
+                }
+            }
+
+            let last_run_state = crate::undo_state::LastRunState::new(
+                &cargo_toml_version,
                 &version,
                 commit_oid,
-                &found_tag_names,
-                &catch_up_tag,
-            )
-            .unwrap_or_else(|error| {
-                eprintln!("Error during creating the release tag:\n\t{error}");
+                catch_up_tag.clone(),
+                release_tag,
+            );
+            let git_dir = git_repo.path();
+            crate::undo_state::write(git_dir, &last_run_state).unwrap_or_else(|error| {
+                eprintln!("Error during recording undo state:\n\t{error}");
                 process::exit(1);
-            })
-        });
-
-        if verbosity >= 1 {
-            if let Some(tag_name) = &release_tag {
-                println!("Created tag: {tag_name}");
-            }
+            });
         }
-
-        let last_run_state = crate::undo_state::LastRunState::new(
-            &cargo_toml_version,
-            &version,
-            commit_oid,
-            catch_up_tag.clone(),
-            release_tag,
-        );
-        let git_dir = git_repo.path();
-        crate::undo_state::write(git_dir, &last_run_state).unwrap_or_else(|error| {
-            eprintln!("Error during recording undo state:\n\t{error}");
-            process::exit(1);
-        });
     }
 
     if args.print_tag {
@@ -167,15 +172,15 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
 ///
 /// ## Returns
 ///
-/// The next [`Version`], and the name of the catch-up tag if one was created (`None` if `noop`
-/// was set or no reconciliation was needed).
+/// The next [`Version`], the name of the catch-up tag if one was created (`None` if `noop` was
+/// set or no reconciliation was needed), and the [`SemanticVersionAction`] that was applied.
 pub fn next_version(
     repository: &impl RepositoryExtension,
     config: &SemanticReleaseConfig,
     cargo_toml_version: &Version,
     forced_action: Option<SemanticVersionAction>,
     noop: bool,
-) -> Result<(Version, Option<String>), Box<dyn std::error::Error>> {
+) -> Result<(Version, Option<String>, SemanticVersionAction), Box<dyn std::error::Error>> {
     let action = match forced_action {
         Some(action) => action,
         None => Changes::from_repo(repository, config)?.define_action_for_semantic_version(),
@@ -206,7 +211,8 @@ pub fn next_version(
         tag_based_current_version
     };
 
-    Ok((action.apply(&baseline), catch_up_tag))
+    let version = action.apply(&baseline);
+    Ok((version, catch_up_tag, action))
 }
 
 #[cfg(test)]
@@ -234,7 +240,14 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), (Version::new(1, 0, 0), None));
+        assert_eq!(
+            result.unwrap(),
+            (
+                Version::new(1, 0, 0),
+                None,
+                SemanticVersionAction::IncrementMajor
+            )
+        );
     }
 
     #[test]
@@ -257,7 +270,14 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), (Version::new(1, 2, 4), None));
+        assert_eq!(
+            result.unwrap(),
+            (
+                Version::new(1, 2, 4),
+                None,
+                SemanticVersionAction::IncrementPatch
+            )
+        );
     }
 
     #[test]
@@ -280,7 +300,14 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), (Version::new(2, 0, 0), None));
+        assert_eq!(
+            result.unwrap(),
+            (
+                Version::new(2, 0, 0),
+                None,
+                SemanticVersionAction::IncrementMajor
+            )
+        );
     }
 
     #[test]
@@ -298,7 +325,14 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), (Version::new(0, 0, 1), None));
+        assert_eq!(
+            result.unwrap(),
+            (
+                Version::new(0, 0, 1),
+                None,
+                SemanticVersionAction::IncrementPatch
+            )
+        );
     }
 
     #[test]
@@ -321,7 +355,14 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), (Version::new(1, 0, 1), None));
+        assert_eq!(
+            result.unwrap(),
+            (
+                Version::new(1, 0, 1),
+                None,
+                SemanticVersionAction::IncrementPatch
+            )
+        );
         assert_eq!(
             repository
                 .get_latest_version_tag("v{version}")
@@ -353,13 +394,14 @@ mod next_version_tests {
         );
 
         // Then
-        let (version, catch_up_tag) = result.unwrap();
+        let (version, catch_up_tag, action) = result.unwrap();
         assert_eq!(version, Version::new(2, 0, 1));
         assert_eq!(
             catch_up_tag.as_deref(),
             Some("v2.0.0"),
             "the created catch-up tag's name should have been returned"
         );
+        assert_eq!(action, SemanticVersionAction::IncrementPatch);
         assert_eq!(
             repository
                 .get_latest_version_tag("v{version}")
@@ -368,6 +410,32 @@ mod next_version_tests {
                 .version,
             Version::new(2, 0, 0),
             "a catch-up tag for the Cargo.toml version should have been created"
+        );
+    }
+
+    #[test]
+    fn returns_keep_when_no_commits_warrant_a_version_change() {
+        // Given
+        let commit_messages = vec![":tada: initial release", ":memo: update the README"];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages));
+        let tagged_commit = repository
+            .find_commit_by_message(":tada: initial release")
+            .unwrap();
+        repository.add_tag(tagged_commit, "v1.0.0");
+
+        // When
+        let result = next_version(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            &Version::new(1, 0, 0),
+            None,
+            false,
+        );
+
+        // Then
+        assert_eq!(
+            result.unwrap(),
+            (Version::new(1, 0, 0), None, SemanticVersionAction::Keep)
         );
     }
 
@@ -391,7 +459,14 @@ mod next_version_tests {
         );
 
         // Then
-        assert_eq!(result.unwrap(), (Version::new(2, 0, 1), None));
+        assert_eq!(
+            result.unwrap(),
+            (
+                Version::new(2, 0, 1),
+                None,
+                SemanticVersionAction::IncrementPatch
+            )
+        );
         assert_eq!(
             repository
                 .get_latest_version_tag("v{version}")
