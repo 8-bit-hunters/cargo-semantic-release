@@ -39,6 +39,14 @@ Pass `-v` to also print the `Cargo.toml` version, the tags found, and the latest
 pass `-vv` to additionally print the commits since the last version tag, grouped into `major`,
 `minor`, `patch`, and `other`.
 
+Other flags for `version`:
+
+- `--noop` — preview the run without writing, committing, tagging, or pushing anything.
+- `--major` / `--minor` / `--patch` — force that bump instead of deriving one from commit history.
+- `--no-commit` — skip creating the bump commit.
+- `--no-push` — skip pushing the bump commit and any created tags to `origin`.
+- `--print-tag` — print the next version's tag (e.g. `v1.2.3`) instead of the bare version.
+
 ### Running in CI
 
 `cargo semantic-release version` commits the bump and pushes it, so it needs `HEAD` checked
