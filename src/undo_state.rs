@@ -11,6 +11,9 @@ pub struct LastRunState {
     pub commit_oid: Option<String>,
     pub catch_up_tag: Option<String>,
     pub release_tag: Option<String>,
+    /// Whether the commit and tags above were pushed to `origin` by this run, so `undo` knows
+    /// whether it also needs to delete the tags there.
+    pub pushed: bool,
 }
 
 impl LastRunState {
@@ -20,6 +23,7 @@ impl LastRunState {
         commit_oid: Option<Oid>,
         catch_up_tag: Option<String>,
         release_tag: Option<String>,
+        pushed: bool,
     ) -> Self {
         Self {
             previous_version: previous_version.to_string(),
@@ -27,6 +31,7 @@ impl LastRunState {
             commit_oid: commit_oid.map(|oid| oid.to_string()),
             catch_up_tag,
             release_tag,
+            pushed,
         }
     }
 }
@@ -86,6 +91,7 @@ mod last_run_state_tests {
             Some(commit_oid),
             Some("v1.0.0".to_string()),
             Some("v1.3.0".to_string()),
+            true,
         );
 
         // Then
@@ -97,6 +103,7 @@ mod last_run_state_tests {
         );
         assert_eq!(result.catch_up_tag, Some("v1.0.0".to_string()));
         assert_eq!(result.release_tag, Some("v1.3.0".to_string()));
+        assert!(result.pushed);
     }
 
     #[test]
@@ -108,12 +115,14 @@ mod last_run_state_tests {
             None,
             None,
             None,
+            false,
         );
 
         // Then
         assert_eq!(result.commit_oid, None);
         assert_eq!(result.catch_up_tag, None);
         assert_eq!(result.release_tag, None);
+        assert!(!result.pushed);
     }
 }
 
@@ -129,6 +138,7 @@ mod tests {
             commit_oid: Some("abc123".to_string()),
             catch_up_tag: None,
             release_tag: Some("v1.3.0".to_string()),
+            pushed: true,
         }
     }
 
@@ -169,6 +179,7 @@ mod tests {
             commit_oid: None,
             catch_up_tag: Some("v2.0.0".to_string()),
             release_tag: Some("v2.1.0".to_string()),
+            pushed: false,
         };
 
         // When

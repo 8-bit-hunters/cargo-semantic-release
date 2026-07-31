@@ -2,7 +2,7 @@ use crate::VersionArgs;
 use cargo_semantic_release::{
     render_tag, Changes, RepositoryExtension, SemanticReleaseConfig, SemanticVersionAction,
 };
-use git2::Repository;
+use git2::{Oid, Repository};
 use semver::Version;
 use std::path::Path;
 use std::{env, process};
@@ -96,11 +96,11 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
         // A `Keep` action means there's nothing new to release: skip the bump commit, release
         // tag, and undo-state write, so a run with no bump-worthy commits doesn't create an
         // empty commit or clobber the state left by the last real bump.
-        let mut bumped = false;
+        let mut commit_oid: Option<Oid> = None;
         let mut release_tag = None;
 
         if action != SemanticVersionAction::Keep {
-            let commit_oid = if !args.no_commit {
+            commit_oid = if !args.no_commit {
                 let commit_message = format!(
                     ":bookmark: Bump release version to {}",
                     render_tag(&config.tag_format, &version)
@@ -116,7 +116,6 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
             } else {
                 None
             };
-            bumped = commit_oid.is_some();
 
             release_tag = commit_oid.and_then(|commit_oid| {
                 crate::create_release_tag(
@@ -138,21 +137,9 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
                     println!("Created tag: {tag_name}");
                 }
             }
-
-            let last_run_state = crate::undo_state::LastRunState::new(
-                &cargo_toml_version,
-                &version,
-                commit_oid,
-                catch_up_tag.clone(),
-                release_tag.clone(),
-            );
-            let git_dir = git_repo.path();
-            crate::undo_state::write(git_dir, &last_run_state).unwrap_or_else(|error| {
-                eprintln!("Error during recording undo state:\n\t{error}");
-                process::exit(1);
-            });
         }
 
+        let mut pushed = false;
         if !args.no_push {
             let branch_name = git_repo.head().ok().and_then(|head| {
                 if head.is_branch() {
@@ -161,17 +148,37 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
                     None
                 }
             });
-            if let Some(refspecs) =
-                push_refspecs(branch_name.as_deref(), bumped, &catch_up_tag, &release_tag)
-            {
-                push_to_remote("origin", &refspecs).unwrap_or_else(|error| {
+            if let Some(refspecs) = push_refspecs(
+                branch_name.as_deref(),
+                commit_oid.is_some(),
+                &catch_up_tag,
+                &release_tag,
+            ) {
+                push_to_remote("origin", &refspecs, &path).unwrap_or_else(|error| {
                     eprintln!("Error during pushing to origin:\n\t{error}");
                     process::exit(1);
                 });
+                pushed = true;
                 if verbosity >= 1 {
                     println!("Pushed {} to origin.", refspecs.join(", "));
                 }
             }
+        }
+
+        if action != SemanticVersionAction::Keep {
+            let last_run_state = crate::undo_state::LastRunState::new(
+                &cargo_toml_version,
+                &version,
+                commit_oid,
+                catch_up_tag.clone(),
+                release_tag.clone(),
+                pushed,
+            );
+            let git_dir = git_repo.path();
+            crate::undo_state::write(git_dir, &last_run_state).unwrap_or_else(|error| {
+                eprintln!("Error during recording undo state:\n\t{error}");
+                process::exit(1);
+            });
         }
     }
 
@@ -217,11 +224,12 @@ fn push_refspecs(
     }
 }
 
-/// Push `refspecs` to `remote_name`, shelling out to `git push` so the caller's existing
-/// credential helpers / SSH agent are reused as-is, rather than re-implementing git
-/// authentication.
-fn push_to_remote(remote_name: &str, refspecs: &[String]) -> Result<(), String> {
+/// Push `refspecs` to `remote_name`, shelling out to `git push` (run in `repo_path`) so the
+/// caller's existing credential helpers / SSH agent are reused as-is, rather than
+/// re-implementing git authentication.
+fn push_to_remote(remote_name: &str, refspecs: &[String], repo_path: &Path) -> Result<(), String> {
     let status = std::process::Command::new("git")
+        .current_dir(repo_path)
         .arg("push")
         .arg(remote_name)
         .args(refspecs)
