@@ -1,10 +1,7 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::{
-    render_tag, RepositoryExtension, SemanticReleaseConfig, SemanticVersionAction,
-};
+use cargo_semantic_release::{RepositoryExtension, SemanticReleaseConfig, SemanticVersionAction};
 use clap::Parser;
 use clap_cargo::style;
-use git2::Oid;
 use semver::Version;
 
 mod command;
@@ -159,109 +156,6 @@ fn current_version(
         .get_latest_version_tag(&config.tag_format)?
         .map(|tag| tag.version)
         .unwrap_or_else(|| Version::new(0, 0, 0)))
-}
-
-/// Create the release tag for `version` at `commit_oid`, unless it's already covered by a tag
-/// found in `found_tag_names` or by this run's `catch_up_tag`.
-///
-/// ## Returns
-///
-/// The tag's name if one was created, `None` if `version` was already tagged.
-fn create_release_tag(
-    repository: &impl RepositoryExtension,
-    tag_format: &str,
-    version: &Version,
-    commit_oid: Oid,
-    found_tag_names: &[String],
-    catch_up_tag: &Option<String>,
-) -> Result<Option<String>, Box<dyn std::error::Error>> {
-    let tag_name = render_tag(tag_format, version);
-    let already_tagged = catch_up_tag.as_deref() == Some(tag_name.as_str())
-        || found_tag_names.iter().any(|name| name == &tag_name);
-    if already_tagged {
-        return Ok(None);
-    }
-    repository.create_tag(&tag_name, commit_oid)?;
-    Ok(Some(tag_name))
-}
-
-#[cfg(test)]
-mod create_release_tag_tests {
-    use crate::create_release_tag;
-    use cargo_semantic_release::test_util::repo_init;
-    use cargo_semantic_release::RepositoryExtension;
-    use semver::Version;
-
-    #[test]
-    fn creates_a_tag_at_the_given_commit_when_none_exists_for_the_version() {
-        // Given
-        let (_temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
-        let commit_oid = repository.head_commit_oid().unwrap();
-
-        // When
-        let result = create_release_tag(
-            &repository,
-            "v{version}",
-            &Version::new(1, 1, 0),
-            commit_oid,
-            &[],
-            &None,
-        );
-
-        // Then
-        assert_eq!(result.unwrap(), Some("v1.1.0".to_string()));
-        let tags = repository.get_all_version_tags("v{version}").unwrap();
-        assert_eq!(tags.len(), 1);
-        assert_eq!(tags[0].version, Version::new(1, 1, 0));
-    }
-
-    #[test]
-    fn skips_when_the_version_is_already_in_found_tags() {
-        // Given
-        let (_temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
-        let commit_oid = repository.head_commit_oid().unwrap();
-
-        // When
-        let result = create_release_tag(
-            &repository,
-            "v{version}",
-            &Version::new(1, 1, 0),
-            commit_oid,
-            &["v1.1.0".to_string()],
-            &None,
-        );
-
-        // Then
-        assert_eq!(result.unwrap(), None);
-        assert!(repository
-            .get_all_version_tags("v{version}")
-            .unwrap()
-            .is_empty());
-    }
-
-    #[test]
-    fn skips_when_the_version_matches_this_run_s_catch_up_tag() {
-        // Given
-        let (_temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
-        let commit_oid = repository.head_commit_oid().unwrap();
-
-        // When
-        let result = create_release_tag(
-            &repository,
-            "v{version}",
-            &Version::new(1, 1, 0),
-            commit_oid,
-            &[],
-            &Some("v1.1.0".to_string()),
-        );
-
-        // Then
-        assert_eq!(result.unwrap(), None);
-        assert!(repository
-            .get_all_version_tags("v{version}")
-            .unwrap()
-            .is_empty());
-    }
 }
 
 #[cfg(test)]

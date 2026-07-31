@@ -1,6 +1,7 @@
 use crate::VersionArgs;
 use cargo_semantic_release::{
-    render_tag, Changes, RepositoryExtension, SemanticReleaseConfig, SemanticVersionAction,
+    create_release_tag, render_tag, Changes, RepositoryExtension, SemanticReleaseConfig,
+    SemanticVersionAction,
 };
 use git2::{Oid, Repository};
 use semver::Version;
@@ -118,7 +119,7 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
             };
 
             release_tag = commit_oid.and_then(|commit_oid| {
-                crate::create_release_tag(
+                create_release_tag(
                     &git_repo,
                     &config.tag_format,
                     &version,

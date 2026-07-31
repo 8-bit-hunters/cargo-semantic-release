@@ -15,7 +15,7 @@ pub mod prelude {
     pub use crate::repo::commit::Commit;
     pub use crate::repo::commit::CommitInterface;
     pub use crate::repo::commit::{Gitmoji, GitmojiCommit};
-    pub use crate::repo::version_tag::{render_tag, VersionTag};
+    pub use crate::repo::version_tag::{create_release_tag, render_tag, VersionTag};
     use git2::Oid;
     use std::error::Error;
     use std::path::Path;
