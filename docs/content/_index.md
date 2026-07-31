@@ -40,41 +40,26 @@ cargo semantic-release version
 By default, this writes the computed next version to `Cargo.toml`, commits the bump, tags the
 release, and pushes both to `origin`, printing the resulting version, e.g. `Next version: 1.2.3`.
 
-Example output:
+Example output, with `-vv` to also show the commits behind the decision:
+```shell
+cargo semantic-release version -vv --noop
 ```
-Current directory: /home/RustroverProjects/cargo-semantic-release
-Changes in the repository:
+```
+Running in no-operation mode (--noop): no files will be written, and no commits, tags, or pushes will be made.
+Cargo.toml version: 1.0.0
+Found tags: v1.0.0
+Latest tag version: 1.0.0
+Commits since the last version tag:
 major:
 
 minor:
-        :sparkles: Evaluate the changes to define the action for semantic version
-        :sparkles: Sort committed changes according to their impact
-        :children_crossing: Show CI/CD badges in the README
-        :sparkles: Create function to fetch commits from a repository
-        :sparkles: Print out the commits in the directory where the program was called
-        :heavy_plus_sign: Add git2 as dependency
-        :sparkles: Print the path of the directory where the program was called
+        :sparkles: Add a new feature (a1b2c3d)
 
 patch:
-        :wrench: Add spellcheck to pre-commit checks
-        :wrench: Add clippy to pre-commit checks
-        :recycle: Rename tests
-        :adhesive_bandage: Fix warning for having both 'license' and 'license-file'
-        :recycle: Use custom commit type
-        :arrow_up: Pre-commit dependency update
-        :recycle: Rename CI workflow names
-        :construction_worker: Run pre-commit checks on every push
-        :construction_worker: Build and test the code on every push
-        :wrench: Add package information to Cargo.toml
-        :pushpin: Make Cargo.lock
-        :rotating_light: Pre-commit check fixes
-        :technologist: Add pre-commit checks
+        :bug: Fix a bug (e4f5a6b)
 
 other:
-        :memo: Add documentation to the library
-        :memo: Add README file
-        :tada: Kick off cargo-semantic-release Rust project
-        :see_no_evil: don't ignore Cargo.lock and ignore .idea folder
+        :memo: Update documentation (c7d8e9f)
 
-Action for semantic version ➡️ increment minor version
+Next version: 1.1.0
 ```
