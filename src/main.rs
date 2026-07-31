@@ -70,6 +70,10 @@ struct VersionArgs {
     /// Skip creating a commit for the version bump
     #[arg(long)]
     no_commit: bool,
+
+    /// Skip pushing the version-bump commit and any created tags to origin
+    #[arg(long)]
+    no_push: bool,
 }
 
 impl VersionArgs {

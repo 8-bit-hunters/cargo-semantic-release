@@ -96,6 +96,9 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
         // A `Keep` action means there's nothing new to release: skip the bump commit, release
         // tag, and undo-state write, so a run with no bump-worthy commits doesn't create an
         // empty commit or clobber the state left by the last real bump.
+        let mut bumped = false;
+        let mut release_tag = None;
+
         if action != SemanticVersionAction::Keep {
             let commit_oid = if !args.no_commit {
                 let commit_message = format!(
@@ -113,8 +116,9 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
             } else {
                 None
             };
+            bumped = commit_oid.is_some();
 
-            let release_tag = commit_oid.and_then(|commit_oid| {
+            release_tag = commit_oid.and_then(|commit_oid| {
                 crate::create_release_tag(
                     &git_repo,
                     &config.tag_format,
@@ -140,7 +144,7 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
                 &version,
                 commit_oid,
                 catch_up_tag.clone(),
-                release_tag,
+                release_tag.clone(),
             );
             let git_dir = git_repo.path();
             crate::undo_state::write(git_dir, &last_run_state).unwrap_or_else(|error| {
@@ -148,12 +152,155 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
                 process::exit(1);
             });
         }
+
+        if !args.no_push {
+            let branch_name = git_repo.head().ok().and_then(|head| {
+                if head.is_branch() {
+                    head.shorthand().map(str::to_string)
+                } else {
+                    None
+                }
+            });
+            if let Some(refspecs) =
+                push_refspecs(branch_name.as_deref(), bumped, &catch_up_tag, &release_tag)
+            {
+                push_to_remote("origin", &refspecs).unwrap_or_else(|error| {
+                    eprintln!("Error during pushing to origin:\n\t{error}");
+                    process::exit(1);
+                });
+                if verbosity >= 1 {
+                    println!("Pushed {} to origin.", refspecs.join(", "));
+                }
+            }
+        }
     }
 
     if args.print_tag {
         println!("Next version: {}", render_tag(&config.tag_format, &version));
     } else {
         println!("Next version: {version}");
+    }
+}
+
+/// The git refs (branch name and/or tag names) a `version` run should push, given what it
+/// changed.
+///
+/// `branch_name` is `None` when `HEAD` isn't attached to a branch (e.g. a detached-HEAD CI
+/// checkout), in which case there's no meaningful destination to push commits to, so the
+/// branch is omitted even if `bumped` is set; tags are pushed either way.
+///
+/// ## Returns
+///
+/// `None` if there's nothing to push (no commit was made and no tag was created).
+fn push_refspecs(
+    branch_name: Option<&str>,
+    bumped: bool,
+    catch_up_tag: &Option<String>,
+    release_tag: &Option<String>,
+) -> Option<Vec<String>> {
+    let mut refspecs = Vec::new();
+    if bumped {
+        if let Some(branch_name) = branch_name {
+            refspecs.push(branch_name.to_string());
+        }
+    }
+    if let Some(tag) = catch_up_tag {
+        refspecs.push(tag.clone());
+    }
+    if let Some(tag) = release_tag {
+        refspecs.push(tag.clone());
+    }
+    if refspecs.is_empty() {
+        None
+    } else {
+        Some(refspecs)
+    }
+}
+
+/// Push `refspecs` to `remote_name`, shelling out to `git push` so the caller's existing
+/// credential helpers / SSH agent are reused as-is, rather than re-implementing git
+/// authentication.
+fn push_to_remote(remote_name: &str, refspecs: &[String]) -> Result<(), String> {
+    let status = std::process::Command::new("git")
+        .arg("push")
+        .arg(remote_name)
+        .args(refspecs)
+        .status()
+        .map_err(|error| format!("failed to run `git push`: {error}"))?;
+    if !status.success() {
+        return Err(format!("`git push` exited with {status}"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod push_refspecs_tests {
+    use crate::command::version::push_refspecs;
+
+    #[test]
+    fn returns_none_when_nothing_changed() {
+        assert_eq!(push_refspecs(Some("main"), false, &None, &None), None);
+    }
+
+    #[test]
+    fn includes_the_branch_when_bumped() {
+        assert_eq!(
+            push_refspecs(Some("main"), true, &None, &None),
+            Some(vec!["main".to_string()])
+        );
+    }
+
+    #[test]
+    fn includes_the_catch_up_tag() {
+        assert_eq!(
+            push_refspecs(Some("main"), false, &Some("v1.0.0".to_string()), &None),
+            Some(vec!["v1.0.0".to_string()])
+        );
+    }
+
+    #[test]
+    fn includes_the_release_tag() {
+        assert_eq!(
+            push_refspecs(Some("main"), false, &None, &Some("v1.1.0".to_string())),
+            Some(vec!["v1.1.0".to_string()])
+        );
+    }
+
+    #[test]
+    fn includes_everything_when_all_present() {
+        assert_eq!(
+            push_refspecs(
+                Some("main"),
+                true,
+                &Some("v1.0.0".to_string()),
+                &Some("v1.1.0".to_string())
+            ),
+            Some(vec![
+                "main".to_string(),
+                "v1.0.0".to_string(),
+                "v1.1.0".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn omits_the_branch_but_still_pushes_tags_when_head_is_detached() {
+        // A detached HEAD (e.g. a CI checkout of a specific commit) has no branch name to push
+        // to, but the tags created this run are still pushable by name.
+        assert_eq!(
+            push_refspecs(
+                None,
+                true,
+                &Some("v1.0.0".to_string()),
+                &Some("v1.1.0".to_string())
+            ),
+            Some(vec!["v1.0.0".to_string(), "v1.1.0".to_string()])
+        );
+    }
+
+    #[test]
+    fn returns_none_when_bumped_but_head_is_detached_and_no_tags_were_created() {
+        assert_eq!(push_refspecs(None, true, &None, &None), None);
     }
 }
 
