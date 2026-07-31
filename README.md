@@ -35,6 +35,10 @@ cargo semantic-release version
 By default, this writes the computed next version to `Cargo.toml`, commits the bump, tags the
 release, and pushes both to `origin`, printing the resulting version, e.g. `Next version: 1.2.3`.
 
+Pass `-v` to also print the `Cargo.toml` version, the tags found, and the latest tagged version;
+pass `-vv` to additionally print the commits since the last version tag, grouped into `major`,
+`minor`, `patch`, and `other`.
+
 ### Running in CI
 
 `cargo semantic-release version` commits the bump and pushes it, so it needs `HEAD` checked
