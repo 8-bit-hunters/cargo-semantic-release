@@ -34,11 +34,11 @@ This will globally install the `cargo-semantic-release` binary.
 You can run the tool in the directory of your choice via `Cargo` with the following command.
 
 ```shell
-cargo semantic-release
+cargo semantic-release version
 ```
 
-This will print out the `major`, `minor`, `patch` related changes and the `other` changes.
-Also, it will indicate the recommended action for the semantic version.
+By default, this writes the computed next version to `Cargo.toml`, commits the bump, tags the
+release, and pushes both to `origin`, printing the resulting version, e.g. `Next version: 1.2.3`.
 
 Example output:
 ```
