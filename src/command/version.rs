@@ -30,7 +30,7 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
             eprintln!("Error during reading Cargo.toml:\n\t{error}");
             process::exit(1);
         });
-    if crate::should_print_cargo_toml_version(verbosity) {
+    if should_print_cargo_toml_version(verbosity) {
         println!("Cargo.toml version: {cargo_toml_version}");
     }
 
@@ -50,19 +50,19 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
     } else {
         found_tag_names.join(", ")
     };
-    if crate::should_print_found_tags(verbosity) {
+    if should_print_found_tags(verbosity) {
         println!("Found tags: {found_tags_display}");
     }
 
-    let repo_current_version = crate::current_version(&git_repo, &config).unwrap_or_else(|error| {
+    let repo_current_version = current_version(&git_repo, &config).unwrap_or_else(|error| {
         eprintln!("Error during fetching the current version:\n\t{error}");
         process::exit(1);
     });
-    if crate::should_print_latest_tags_version(verbosity) {
+    if should_print_latest_tags_version(verbosity) {
         println!("Latest tag version: {repo_current_version}");
     }
 
-    if crate::should_print_commit_log(verbosity) {
+    if should_print_commit_log(verbosity) {
         let changes = Changes::from_repo(&git_repo, &config).unwrap_or_else(|error| {
             eprintln!("Error during fetching changes from repository:\n\t{error}");
             process::exit(1);
@@ -190,6 +190,99 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
     }
 }
 
+/// Whether the commits since the last version tag should be printed, given `verbosity`.
+///
+/// Requires `-vv` (or higher); `-v` alone does not show the commit log.
+fn should_print_commit_log(verbosity: u8) -> bool {
+    verbosity >= 2
+}
+
+/// Whether the `Cargo.toml` version should be printed, given `verbosity`.
+///
+/// Requires `-v` (or higher).
+fn should_print_cargo_toml_version(verbosity: u8) -> bool {
+    verbosity >= 1
+}
+
+/// Whether the found tags should be printed, given `verbosity`.
+///
+/// Requires `-v` (or higher).
+fn should_print_found_tags(verbosity: u8) -> bool {
+    verbosity >= 1
+}
+
+/// Whether the latest tag version should be printed, given `verbosity`.
+///
+/// Requires `-v` (or higher).
+fn should_print_latest_tags_version(verbosity: u8) -> bool {
+    verbosity >= 1
+}
+
+#[cfg(test)]
+mod should_print_commit_log_tests {
+    use crate::command::version::should_print_commit_log;
+
+    #[test]
+    fn is_false_below_double_verbose() {
+        assert!(!should_print_commit_log(0));
+        assert!(!should_print_commit_log(1));
+    }
+
+    #[test]
+    fn is_true_at_double_verbose_or_more() {
+        assert!(should_print_commit_log(2));
+        assert!(should_print_commit_log(3));
+    }
+}
+
+#[cfg(test)]
+mod should_print_cargo_toml_version_tests {
+    use crate::command::version::should_print_cargo_toml_version;
+
+    #[test]
+    fn is_false_without_verbose() {
+        assert!(!should_print_cargo_toml_version(0));
+    }
+
+    #[test]
+    fn is_true_at_verbose_or_more() {
+        assert!(should_print_cargo_toml_version(1));
+        assert!(should_print_cargo_toml_version(2));
+    }
+}
+
+#[cfg(test)]
+mod should_print_found_tags_tests {
+    use crate::command::version::should_print_found_tags;
+
+    #[test]
+    fn is_false_without_verbose() {
+        assert!(!should_print_found_tags(0));
+    }
+
+    #[test]
+    fn is_true_at_verbose_or_more() {
+        assert!(should_print_found_tags(1));
+        assert!(should_print_found_tags(2));
+    }
+}
+
+#[cfg(test)]
+mod should_print_latest_tags_version_tests {
+    use crate::command::version::should_print_latest_tags_version;
+
+    #[test]
+    fn is_false_without_verbose() {
+        assert!(!should_print_latest_tags_version(0));
+    }
+
+    #[test]
+    fn is_true_at_verbose_or_more() {
+        assert!(should_print_latest_tags_version(1));
+        assert!(should_print_latest_tags_version(2));
+    }
+}
+
 /// The git refs (branch name and/or tag names) a `version` run should push, given what it
 /// changed.
 ///
@@ -313,13 +406,60 @@ mod push_refspecs_tests {
     }
 }
 
+/// The repository's current version: the latest version tag's version, or `0.0.0` if there is
+/// none yet.
+pub fn current_version(
+    repository: &impl RepositoryExtension,
+    config: &SemanticReleaseConfig,
+) -> Result<Version, Box<dyn std::error::Error>> {
+    Ok(repository
+        .get_latest_version_tag(&config.tag_format)?
+        .map(|tag| tag.version)
+        .unwrap_or_else(|| Version::new(0, 0, 0)))
+}
+
+#[cfg(test)]
+mod current_version_tests {
+    use crate::command::version::current_version;
+    use cargo_semantic_release::test_util::{repo_init, RepositoryTestExtensions};
+    use cargo_semantic_release::SemanticReleaseConfig;
+    use semver::Version;
+
+    #[test]
+    fn defaults_to_0_0_0_without_a_version_tag() {
+        // Given
+        let (_temp_dir, repository) = repo_init(None);
+
+        // When
+        let result = current_version(&repository, &SemanticReleaseConfig::default());
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(0, 0, 0));
+    }
+
+    #[test]
+    fn reads_the_version_from_the_latest_version_tag() {
+        // Given
+        let commit_message = ":tada: initial release";
+        let (_temp_dir, repository) = repo_init(Some(vec![commit_message]));
+        let tagged_commit = repository.find_commit_by_message(commit_message).unwrap();
+        repository.add_tag(tagged_commit, "v1.2.3");
+
+        // When
+        let result = current_version(&repository, &SemanticReleaseConfig::default());
+
+        // Then
+        assert_eq!(result.unwrap(), Version::new(1, 2, 3));
+    }
+}
+
 /// Compute the next semantic version for `repository`, given `config`.
 ///
 /// Combines a baseline version with a [`SemanticVersionAction`]. `forced_action`, when given,
 /// is used as-is instead of deriving one from the commits since the latest tag, in which case
 /// the repository's commits aren't parsed at all.
 ///
-/// The baseline is normally [`crate::current_version`] (the latest tag). But if
+/// The baseline is normally [`current_version`] (the latest tag). But if
 /// `cargo_toml_version` (the version currently declared in `Cargo.toml`) is *ahead* of that,
 /// the tag history is missing a tag for it, e.g. it was bumped by hand without tagging. In that
 /// case a catch-up tag for `cargo_toml_version` is created at `HEAD` (skipped when `noop` is
@@ -342,7 +482,7 @@ pub fn next_version(
         None => Changes::from_repo(repository, config)?.define_action_for_semantic_version(),
     };
 
-    let tag_based_current_version = crate::current_version(repository, config)?;
+    let tag_based_current_version = current_version(repository, config)?;
 
     let mut catch_up_tag = None;
 
