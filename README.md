@@ -36,6 +36,20 @@ This will print out the `major`, `minor`, `patch` related changes and the `other
 Also, it will indicate the recommended action for the semantic version, and the resulting new
 version number.
 
+### Running in CI
+
+`cargo semantic-release version` commits the bump and pushes it, so it needs `HEAD` checked
+out on a real branch. Most CI providers check out a detached `HEAD` by default (e.g. GitHub
+Actions' `actions/checkout`), which leaves nothing for the push to update — the bump commit
+would only be reachable via its tag, never merged into your branch. Point the checkout at the
+branch explicitly, e.g. with `actions/checkout`:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    ref: ${{ github.ref_name }}
+```
+
 ## Configuration
 
 By default, `cargo-semantic-release` works out of the box with no configuration needed. You can
