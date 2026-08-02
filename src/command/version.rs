@@ -500,11 +500,16 @@ fn record_undo_state(
 }
 
 /// Apply `bump` to the repository: write `Cargo.toml`, create the bump commit and release
-/// tag, push, and record undo state.
+/// tag, record undo state, then push.
 ///
 /// The commit/tag/undo-state steps are skipped when `bump.action` is
 /// [`SemanticVersionAction::Keep`] (nothing new to release). Push still runs regardless, since
 /// a catch-up tag can exist even when `bump.action` is `Keep`.
+///
+/// Undo state is recorded *before* the push is attempted (as not-yet-pushed), and updated
+/// afterward if the push succeeds. Recording it first means a failed push (e.g. a rejected or
+/// hook-blocked `git push`) still leaves `undo` something to act on instead of silently losing
+/// track of the commit and tags that were already created locally.
 fn perform_version_bump(
     git_repo: &Repository,
     config: &SemanticReleaseConfig,
@@ -522,6 +527,17 @@ fn perform_version_bump(
         (None, None)
     };
 
+    if bump.action != SemanticVersionAction::Keep {
+        record_undo_state(
+            git_repo.path(),
+            context,
+            bump,
+            commit_oid,
+            release_tag.clone(),
+            false,
+        )?;
+    }
+
     let pushed = push_bump(
         git_repo,
         commit_oid,
@@ -532,18 +548,88 @@ fn perform_version_bump(
         verbosity,
     )?;
 
-    if bump.action != SemanticVersionAction::Keep {
+    if pushed && bump.action != SemanticVersionAction::Keep {
         record_undo_state(
             git_repo.path(),
             context,
             bump,
             commit_oid,
             release_tag,
-            pushed,
+            true,
         )?;
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod perform_version_bump_tests {
+    use crate::command::version::{perform_version_bump, VersionArgs, VersionBump, VersionContext};
+    use crate::undo_state;
+    use cargo_semantic_release::test_util::repo_init;
+    use cargo_semantic_release::{SemanticReleaseConfig, SemanticVersionAction};
+    use semver::Version;
+    use std::fs;
+
+    fn write_cargo_toml(temp_dir: &tempfile::TempDir) {
+        fs::write(
+            temp_dir.path().join("Cargo.toml"),
+            "[package]\nname = \"foo\"\nversion = \"1.0.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+    }
+
+    fn args() -> VersionArgs {
+        VersionArgs {
+            print_tag: false,
+            major: false,
+            minor: false,
+            patch: false,
+            no_commit: false,
+            no_push: false,
+        }
+    }
+
+    #[test]
+    fn records_undo_state_even_when_the_push_fails() {
+        // Given
+        let (temp_dir, repository) = repo_init(Some(vec![":tada: initial release"]));
+        write_cargo_toml(&temp_dir);
+        repository
+            .remote("origin", "/nonexistent/path/to/nowhere")
+            .unwrap();
+
+        let context = VersionContext {
+            path: temp_dir.path().to_path_buf(),
+            cargo_toml_path: temp_dir.path().join("Cargo.toml"),
+            cargo_toml_version: Version::new(1, 0, 0),
+            found_tag_names: vec![],
+        };
+        let bump = VersionBump {
+            version: Version::new(1, 1, 0),
+            catch_up_tag: None,
+            action: SemanticVersionAction::IncrementMinor,
+        };
+
+        // When
+        let result = perform_version_bump(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            &context,
+            &bump,
+            &args(),
+            0,
+        );
+
+        // Then
+        assert!(result.is_err(), "expected the push to fail");
+        let state = undo_state::read(repository.path()).unwrap();
+        assert!(
+            state.is_some(),
+            "undo state should have been recorded despite the push failure"
+        );
+        assert!(!state.unwrap().pushed);
+    }
 }
 
 /// Whether the commits since the last version tag should be printed, given `verbosity`.
