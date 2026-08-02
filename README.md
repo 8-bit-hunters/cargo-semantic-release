@@ -55,7 +55,8 @@ cargo semantic-release undo
 
 Restores `Cargo.toml` to its previous version and removes the bump commit and any tags `version`
 created, deleting those tags from `origin` too if they were pushed. It refuses to undo if `HEAD`
-has moved since the bump commit was created; pass `--force` to undo anyway.
+has moved since the bump commit was created; pass `--force` to undo anyway. Pass `--noop` to
+preview what would be undone without changing anything.
 
 ### Running in CI
 
