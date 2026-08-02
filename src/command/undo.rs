@@ -1,11 +1,17 @@
 use crate::undo_state;
 use crate::version;
-use crate::UndoArgs;
 use cargo_semantic_release::RepositoryExtension;
 use git2::{Oid, Repository};
 use semver::Version;
 use std::path::Path;
 use std::{env, process};
+
+#[derive(clap::Args)]
+pub struct UndoArgs {
+    /// Undo even if HEAD has moved since the version-bump commit was created
+    #[arg(long)]
+    force: bool,
+}
 
 pub fn run_undo_command(args: UndoArgs, noop: bool) {
     let path = env::current_dir().unwrap_or_else(|error| {

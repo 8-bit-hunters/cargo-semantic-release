@@ -1,7 +1,8 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::SemanticVersionAction;
 use clap::Parser;
 use clap_cargo::style;
+use command::undo::UndoArgs;
+use command::version::VersionArgs;
 
 mod command;
 mod undo_state;
@@ -36,55 +37,6 @@ enum SemanticReleaseCommand {
     Version(VersionArgs),
     /// Undo the changes made by the last `version` run
     Undo(UndoArgs),
-}
-
-#[derive(clap::Args)]
-struct UndoArgs {
-    /// Undo even if HEAD has moved since the version-bump commit was created
-    #[arg(long)]
-    force: bool,
-}
-
-#[derive(clap::Args)]
-struct VersionArgs {
-    /// Print the next version's tag (e.g. `v1.2.3`) instead of the bare version
-    #[arg(long)]
-    print_tag: bool,
-
-    /// Force a major version bump instead of deriving it from commit history
-    #[arg(long, conflicts_with_all = ["minor", "patch"])]
-    major: bool,
-
-    /// Force a minor version bump instead of deriving it from commit history
-    #[arg(long, conflicts_with = "patch")]
-    minor: bool,
-
-    /// Force a patch version bump instead of deriving it from commit history
-    #[arg(long)]
-    patch: bool,
-
-    /// Skip creating a commit for the version bump
-    #[arg(long)]
-    no_commit: bool,
-
-    /// Skip pushing the version-bump commit and any created tags to origin
-    #[arg(long)]
-    no_push: bool,
-}
-
-impl VersionArgs {
-    /// The [`SemanticVersionAction`] forced by `--major`/`--minor`/`--patch`, if any.
-    fn forced_action(&self) -> Option<SemanticVersionAction> {
-        if self.major {
-            Some(SemanticVersionAction::IncrementMajor)
-        } else if self.minor {
-            Some(SemanticVersionAction::IncrementMinor)
-        } else if self.patch {
-            Some(SemanticVersionAction::IncrementPatch)
-        } else {
-            None
-        }
-    }
 }
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
