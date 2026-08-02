@@ -145,6 +145,37 @@ patch_tags = [
 
 The utility functions for the binary are available in a [library crate](https://docs.rs/crate/cargo-semantic-release/).
 
+## Documentation
+
+The [docs site](https://8-bit-hunters.github.io/cargo-semantic-release/) lives under `docs/` and is built with
+[Hugo](https://gohugo.io/) (extended edition) using the [Hextra](https://github.com/imfing/hextra) theme, pulled in
+as a Hugo Module. Building it also requires a Go toolchain, since Hugo shells out to `go` to resolve the theme
+module.
+
+Requires Go >= 1.23.6 (per `docs/go.mod`) and Hugo Extended (tested with v0.164.0).
+
+To preview it locally:
+
+```shell
+cd docs
+hugo server
+```
+
+To produce a production build (output in `docs/public/`):
+
+```shell
+cd docs
+hugo --gc --minify
+```
+
+The theme version is pinned in `docs/go.mod`/`docs/go.sum`. Bump it with:
+
+```shell
+cd docs
+hugo mod get github.com/imfing/hextra@<version>
+hugo mod tidy
+```
+
 ## Links
 
 - [Homepage](https://8-bit-hunters.github.io/cargo-semantic-release/)
