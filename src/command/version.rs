@@ -4,7 +4,7 @@ use cargo_semantic_release::{
 };
 use git2::{Oid, Repository};
 use semver::Version;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{env, process};
 
 #[derive(clap::Args)]
@@ -49,6 +49,24 @@ impl VersionArgs {
     }
 }
 
+/// What the setup phase discovers about the repository, needed by the later phases of a
+/// `version` run.
+struct VersionContext {
+    /// The repository root, needed by [`push_bump`] to run `git push` in the right directory.
+    path: PathBuf,
+    cargo_toml_path: PathBuf,
+    cargo_toml_version: Version,
+    found_tag_names: Vec<String>,
+}
+
+/// What [`next_version`] decided: the next [`Version`], the catch-up tag it created (if any),
+/// and the [`SemanticVersionAction`] that was applied.
+struct VersionBump {
+    version: Version,
+    catch_up_tag: Option<String>,
+    action: SemanticVersionAction,
+}
+
 pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
     let path = env::current_dir().unwrap_or_else(|error| {
         eprintln!("Error during getting the current directory:\n\t{error}");
@@ -65,56 +83,20 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
         process::exit(1);
     });
 
-    let cargo_toml_path = path.join("Cargo.toml");
-    let cargo_toml_version =
-        crate::version::get_cargo_version(&cargo_toml_path).unwrap_or_else(|error| {
-            eprintln!("Error during reading Cargo.toml:\n\t{error}");
-            process::exit(1);
-        });
-    if should_print_cargo_toml_version(verbosity) {
-        println!("Cargo.toml version: {cargo_toml_version}");
-    }
-
-    let mut found_tags = git_repo
-        .get_all_version_tags(&config.tag_format)
-        .unwrap_or_else(|error| {
-            eprintln!("Error during fetching version tags:\n\t{error}");
-            process::exit(1);
-        });
-    found_tags.sort();
-    let found_tag_names: Vec<String> = found_tags
-        .iter()
-        .map(|tag| render_tag(&config.tag_format, &tag.version))
-        .collect();
-    let found_tags_display = if found_tag_names.is_empty() {
-        "none".to_string()
-    } else {
-        found_tag_names.join(", ")
-    };
-    if should_print_found_tags(verbosity) {
-        println!("Found tags: {found_tags_display}");
-    }
-
-    let repo_current_version = current_version(&git_repo, &config).unwrap_or_else(|error| {
-        eprintln!("Error during fetching the current version:\n\t{error}");
+    let context = gather_version_context(&git_repo, path, &config).unwrap_or_else(|error| {
+        eprintln!("{error}");
         process::exit(1);
     });
-    if should_print_latest_tags_version(verbosity) {
-        println!("Latest tag version: {repo_current_version}");
-    }
 
-    if should_print_commit_log(verbosity) {
-        let changes = Changes::from_repo(&git_repo, &config).unwrap_or_else(|error| {
-            eprintln!("Error during fetching changes from repository:\n\t{error}");
-            process::exit(1);
-        });
-        println!("Commits since the last version tag:\n{changes}");
-    }
+    print_context_report(&git_repo, &config, &context, verbosity).unwrap_or_else(|error| {
+        eprintln!("{error}");
+        process::exit(1);
+    });
 
     let (version, catch_up_tag, action) = next_version(
         &git_repo,
         &config,
-        &cargo_toml_version,
+        &context.cargo_toml_version,
         args.forced_action(),
         noop,
     )
@@ -129,106 +111,439 @@ pub fn run_version_command(args: VersionArgs, verbosity: u8, noop: bool) {
         }
     }
 
+    let bump = VersionBump {
+        version,
+        catch_up_tag,
+        action,
+    };
+
     if !noop {
-        crate::version::set_cargo_version(&cargo_toml_path, &version).unwrap_or_else(|error| {
-            eprintln!("Error during writing Cargo.toml:\n\t{error}");
-            process::exit(1);
-        });
-
-        // A `Keep` action means there's nothing new to release: skip the bump commit, release
-        // tag, and undo-state write, so a run with no bump-worthy commits doesn't create an
-        // empty commit or clobber the state left by the last real bump.
-        let mut commit_oid: Option<Oid> = None;
-        let mut release_tag = None;
-
-        if action != SemanticVersionAction::Keep {
-            commit_oid = if !args.no_commit {
-                let commit_message = format!(
-                    ":bookmark: Bump release version to {}",
-                    render_tag(&config.tag_format, &version)
-                );
-                Some(
-                    git_repo
-                        .commit_file(Path::new("Cargo.toml"), &commit_message)
-                        .unwrap_or_else(|error| {
-                            eprintln!("Error during committing the version bump:\n\t{error}");
-                            process::exit(1);
-                        }),
-                )
-            } else {
-                None
-            };
-
-            release_tag = commit_oid.and_then(|commit_oid| {
-                create_release_tag(
-                    &git_repo,
-                    &config.tag_format,
-                    &version,
-                    commit_oid,
-                    &found_tag_names,
-                    &catch_up_tag,
-                )
-                .unwrap_or_else(|error| {
-                    eprintln!("Error during creating the release tag:\n\t{error}");
-                    process::exit(1);
-                })
-            });
-
-            if verbosity >= 1 {
-                if let Some(tag_name) = &release_tag {
-                    println!("Created tag: {tag_name}");
-                }
-            }
-        }
-
-        let mut pushed = false;
-        if !args.no_push {
-            let branch_name = git_repo.head().ok().and_then(|head| {
-                if head.is_branch() {
-                    head.shorthand().map(str::to_string)
-                } else {
-                    None
-                }
-            });
-            if let Some(refspecs) = push_refspecs(
-                branch_name.as_deref(),
-                commit_oid.is_some(),
-                &catch_up_tag,
-                &release_tag,
-            ) {
-                push_to_remote("origin", &refspecs, &path).unwrap_or_else(|error| {
-                    eprintln!("Error during pushing to origin:\n\t{error}");
-                    process::exit(1);
-                });
-                pushed = true;
-                if verbosity >= 1 {
-                    println!("Pushed {} to origin.", refspecs.join(", "));
-                }
-            }
-        }
-
-        if action != SemanticVersionAction::Keep {
-            let last_run_state = crate::undo_state::LastRunState::new(
-                &cargo_toml_version,
-                &version,
-                commit_oid,
-                catch_up_tag.clone(),
-                release_tag.clone(),
-                pushed,
-            );
-            let git_dir = git_repo.path();
-            crate::undo_state::write(git_dir, &last_run_state).unwrap_or_else(|error| {
-                eprintln!("Error during recording undo state:\n\t{error}");
+        perform_version_bump(&git_repo, &config, &context, &bump, &args, verbosity).unwrap_or_else(
+            |error| {
+                eprintln!("{error}");
                 process::exit(1);
-            });
-        }
+            },
+        );
     }
 
     if args.print_tag {
-        println!("Next version: {}", render_tag(&config.tag_format, &version));
+        println!(
+            "Next version: {}",
+            render_tag(&config.tag_format, &bump.version)
+        );
     } else {
-        println!("Next version: {version}");
+        println!("Next version: {}", bump.version);
     }
+}
+
+/// Read `Cargo.toml`'s declared version and fetch the repository's version tags.
+fn gather_version_context(
+    repository: &impl RepositoryExtension,
+    path: PathBuf,
+    config: &SemanticReleaseConfig,
+) -> Result<VersionContext, String> {
+    let cargo_toml_path = path.join("Cargo.toml");
+    let cargo_toml_version = crate::version::get_cargo_version(&cargo_toml_path)
+        .map_err(|error| format!("Error during reading Cargo.toml:\n\t{error}"))?;
+
+    let mut found_tags = repository
+        .get_all_version_tags(&config.tag_format)
+        .map_err(|error| format!("Error during fetching version tags:\n\t{error}"))?;
+    found_tags.sort();
+    let found_tag_names = found_tags
+        .iter()
+        .map(|tag| render_tag(&config.tag_format, &tag.version))
+        .collect();
+
+    Ok(VersionContext {
+        path,
+        cargo_toml_path,
+        cargo_toml_version,
+        found_tag_names,
+    })
+}
+
+#[cfg(test)]
+mod gather_version_context_tests {
+    use crate::command::version::gather_version_context;
+    use cargo_semantic_release::test_util::{repo_init, RepositoryTestExtensions};
+    use cargo_semantic_release::SemanticReleaseConfig;
+    use semver::Version;
+    use std::fs;
+
+    #[test]
+    fn reads_the_cargo_toml_version_and_found_tags() {
+        // Given
+        let commit_message = ":tada: initial release";
+        let (temp_dir, repository) = repo_init(Some(vec![commit_message]));
+        fs::write(
+            temp_dir.path().join("Cargo.toml"),
+            "[package]\nname = \"foo\"\nversion = \"1.2.3\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        let tagged_commit = repository.find_commit_by_message(commit_message).unwrap();
+        repository.add_tag(tagged_commit, "v1.0.0");
+
+        // When
+        let result = gather_version_context(
+            &repository,
+            temp_dir.path().to_path_buf(),
+            &SemanticReleaseConfig::default(),
+        );
+
+        // Then
+        let context = result.unwrap();
+        assert_eq!(context.cargo_toml_version, Version::new(1, 2, 3));
+        assert_eq!(context.found_tag_names, vec!["v1.0.0".to_string()]);
+    }
+
+    #[test]
+    fn found_tag_names_is_empty_without_any_tags() {
+        // Given
+        let (temp_dir, repository) = repo_init(Some(vec![":tada: initial release"]));
+        fs::write(
+            temp_dir.path().join("Cargo.toml"),
+            "[package]\nname = \"foo\"\nversion = \"1.0.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+
+        // When
+        let result = gather_version_context(
+            &repository,
+            temp_dir.path().to_path_buf(),
+            &SemanticReleaseConfig::default(),
+        );
+
+        // Then
+        assert_eq!(result.unwrap().found_tag_names, Vec::<String>::new());
+    }
+
+    #[test]
+    fn errors_when_cargo_toml_is_missing() {
+        // Given
+        let (temp_dir, repository) = repo_init(None);
+
+        // When
+        let result = gather_version_context(
+            &repository,
+            temp_dir.path().to_path_buf(),
+            &SemanticReleaseConfig::default(),
+        );
+
+        // Then
+        assert!(result.is_err(), "Expected Err, got Ok");
+    }
+}
+
+/// Print the `-v`/`-vv` verbose report (`Cargo.toml` version, found tags, latest tag version,
+/// and, at `-vv`, the commit log), gated per line by [`should_print_cargo_toml_version`] and
+/// friends.
+fn print_context_report(
+    repository: &impl RepositoryExtension,
+    config: &SemanticReleaseConfig,
+    context: &VersionContext,
+    verbosity: u8,
+) -> Result<(), String> {
+    if should_print_cargo_toml_version(verbosity) {
+        println!("Cargo.toml version: {}", context.cargo_toml_version);
+    }
+
+    if should_print_found_tags(verbosity) {
+        let found_tags_display = if context.found_tag_names.is_empty() {
+            "none".to_string()
+        } else {
+            context.found_tag_names.join(", ")
+        };
+        println!("Found tags: {found_tags_display}");
+    }
+
+    if should_print_latest_tags_version(verbosity) {
+        let repo_current_version = current_version(repository, config)
+            .map_err(|error| format!("Error during fetching the current version:\n\t{error}"))?;
+        println!("Latest tag version: {repo_current_version}");
+    }
+
+    if should_print_commit_log(verbosity) {
+        let changes = Changes::from_repo(repository, config).map_err(|error| {
+            format!("Error during fetching changes from repository:\n\t{error}")
+        })?;
+        println!("Commits since the last version tag:\n{changes}");
+    }
+
+    Ok(())
+}
+
+/// Create the version-bump commit and its release tag, unless `--no-commit` was passed.
+///
+/// Skipping the commit (or the commit failing) leaves no `Oid` to tag against, so the release
+/// tag is skipped too in that case.
+fn create_bump_commit_and_tag(
+    repository: &impl RepositoryExtension,
+    config: &SemanticReleaseConfig,
+    context: &VersionContext,
+    bump: &VersionBump,
+    args: &VersionArgs,
+    verbosity: u8,
+) -> Result<(Option<Oid>, Option<String>), String> {
+    let commit_oid = if !args.no_commit {
+        let commit_message = format!(
+            ":bookmark: Bump release version to {}",
+            render_tag(&config.tag_format, &bump.version)
+        );
+        Some(
+            repository
+                .commit_file(Path::new("Cargo.toml"), &commit_message)
+                .map_err(|error| format!("Error during committing the version bump:\n\t{error}"))?,
+        )
+    } else {
+        None
+    };
+
+    let release_tag = match commit_oid {
+        Some(commit_oid) => create_release_tag(
+            repository,
+            &config.tag_format,
+            &bump.version,
+            commit_oid,
+            &context.found_tag_names,
+            &bump.catch_up_tag,
+        )
+        .map_err(|error| format!("Error during creating the release tag:\n\t{error}"))?,
+        None => None,
+    };
+
+    if verbosity >= 1 {
+        if let Some(tag_name) = &release_tag {
+            println!("Created tag: {tag_name}");
+        }
+    }
+
+    Ok((commit_oid, release_tag))
+}
+
+#[cfg(test)]
+mod create_bump_commit_and_tag_tests {
+    use crate::command::version::{
+        create_bump_commit_and_tag, VersionArgs, VersionBump, VersionContext,
+    };
+    use cargo_semantic_release::test_util::repo_init;
+    use cargo_semantic_release::{SemanticReleaseConfig, SemanticVersionAction};
+    use semver::Version;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn write_cargo_toml(temp_dir: &tempfile::TempDir) {
+        fs::write(
+            temp_dir.path().join("Cargo.toml"),
+            "[package]\nname = \"foo\"\nversion = \"1.0.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+    }
+
+    fn args(no_commit: bool) -> VersionArgs {
+        VersionArgs {
+            print_tag: false,
+            major: false,
+            minor: false,
+            patch: false,
+            no_commit,
+            no_push: false,
+        }
+    }
+
+    fn context(found_tag_names: Vec<String>) -> VersionContext {
+        VersionContext {
+            path: PathBuf::new(),
+            cargo_toml_path: PathBuf::new(),
+            cargo_toml_version: Version::new(1, 0, 0),
+            found_tag_names,
+        }
+    }
+
+    fn bump(version: Version) -> VersionBump {
+        VersionBump {
+            version,
+            catch_up_tag: None,
+            action: SemanticVersionAction::IncrementMinor,
+        }
+    }
+
+    #[test]
+    fn creates_a_bump_commit_and_release_tag() {
+        // Given
+        let (temp_dir, repository) = repo_init(Some(vec![":tada: initial release"]));
+        write_cargo_toml(&temp_dir);
+
+        // When
+        let result = create_bump_commit_and_tag(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            &context(vec![]),
+            &bump(Version::new(1, 1, 0)),
+            &args(false),
+            0,
+        );
+
+        // Then
+        let (commit_oid, release_tag) = result.unwrap();
+        assert!(commit_oid.is_some());
+        assert_eq!(release_tag, Some("v1.1.0".to_string()));
+    }
+
+    #[test]
+    fn no_commit_skips_the_commit_and_the_tag() {
+        // Given
+        let (_temp_dir, repository) = repo_init(Some(vec![":tada: initial release"]));
+
+        // When
+        let result = create_bump_commit_and_tag(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            &context(vec![]),
+            &bump(Version::new(1, 1, 0)),
+            &args(true),
+            0,
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), (None, None));
+    }
+
+    #[test]
+    fn skips_the_tag_when_the_version_is_already_tagged() {
+        // Given
+        let (temp_dir, repository) = repo_init(Some(vec![":tada: initial release"]));
+        write_cargo_toml(&temp_dir);
+
+        // When
+        let result = create_bump_commit_and_tag(
+            &repository,
+            &SemanticReleaseConfig::default(),
+            &context(vec!["v1.1.0".to_string()]),
+            &bump(Version::new(1, 1, 0)),
+            &args(false),
+            0,
+        );
+
+        // Then
+        let (commit_oid, release_tag) = result.unwrap();
+        assert!(commit_oid.is_some());
+        assert_eq!(release_tag, None);
+    }
+}
+
+/// Push the branch of the bump commit (if any was made) and any created tags to `origin`,
+/// unless `--no-push` was passed.
+///
+/// ## Returns
+///
+/// Whether anything was actually pushed (`false` if `--no-push` was set or there was nothing
+/// to push).
+fn push_bump(
+    git_repo: &Repository,
+    commit_oid: Option<Oid>,
+    release_tag: &Option<String>,
+    context: &VersionContext,
+    bump: &VersionBump,
+    args: &VersionArgs,
+    verbosity: u8,
+) -> Result<bool, String> {
+    if args.no_push {
+        return Ok(false);
+    }
+
+    let branch_name = git_repo.head().ok().and_then(|head| {
+        if head.is_branch() {
+            head.shorthand().map(str::to_string)
+        } else {
+            None
+        }
+    });
+
+    match push_refspecs(
+        branch_name.as_deref(),
+        commit_oid.is_some(),
+        &bump.catch_up_tag,
+        release_tag,
+    ) {
+        Some(refspecs) => {
+            push_to_remote("origin", &refspecs, &context.path)
+                .map_err(|error| format!("Error during pushing to origin:\n\t{error}"))?;
+            if verbosity >= 1 {
+                println!("Pushed {} to origin.", refspecs.join(", "));
+            }
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
+/// Record what this run changed, so a later `undo` can reverse it.
+fn record_undo_state(
+    git_dir: &Path,
+    context: &VersionContext,
+    bump: &VersionBump,
+    commit_oid: Option<Oid>,
+    release_tag: Option<String>,
+    pushed: bool,
+) -> Result<(), String> {
+    let last_run_state = crate::undo_state::LastRunState::new(
+        &context.cargo_toml_version,
+        &bump.version,
+        commit_oid,
+        bump.catch_up_tag.clone(),
+        release_tag,
+        pushed,
+    );
+    crate::undo_state::write(git_dir, &last_run_state)
+        .map_err(|error| format!("Error during recording undo state:\n\t{error}"))
+}
+
+/// Apply `bump` to the repository: write `Cargo.toml`, create the bump commit and release
+/// tag, push, and record undo state.
+///
+/// The commit/tag/undo-state steps are skipped when `bump.action` is
+/// [`SemanticVersionAction::Keep`] (nothing new to release). Push still runs regardless, since
+/// a catch-up tag can exist even when `bump.action` is `Keep`.
+fn perform_version_bump(
+    git_repo: &Repository,
+    config: &SemanticReleaseConfig,
+    context: &VersionContext,
+    bump: &VersionBump,
+    args: &VersionArgs,
+    verbosity: u8,
+) -> Result<(), String> {
+    crate::version::set_cargo_version(&context.cargo_toml_path, &bump.version)
+        .map_err(|error| format!("Error during writing Cargo.toml:\n\t{error}"))?;
+
+    let (commit_oid, release_tag) = if bump.action != SemanticVersionAction::Keep {
+        create_bump_commit_and_tag(git_repo, config, context, bump, args, verbosity)?
+    } else {
+        (None, None)
+    };
+
+    let pushed = push_bump(
+        git_repo,
+        commit_oid,
+        &release_tag,
+        context,
+        bump,
+        args,
+        verbosity,
+    )?;
+
+    if bump.action != SemanticVersionAction::Keep {
+        record_undo_state(
+            git_repo.path(),
+            context,
+            bump,
+            commit_oid,
+            release_tag,
+            pushed,
+        )?;
+    }
+
+    Ok(())
 }
 
 /// Whether the commits since the last version tag should be printed, given `verbosity`.
