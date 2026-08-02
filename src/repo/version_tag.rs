@@ -1,24 +1,25 @@
+use crate::repo::prelude::RepositoryExtension;
 use git2::{Object, ObjectType, Oid, Reference, Repository, Tag};
 use regex::Regex;
 use semver::Version;
 use std::error::Error;
 
-/// Get the latest version tag.
+/// Get every tag matching `tag_format`.
 ///
 /// `tag_format` describes the shape of version tags, e.g. `"v{version}"`; the
 /// literal `{version}` placeholder marks where the semantic version sits.
 /// ## Returns
-/// [`VersionTag`] containing the latest version tag.
-pub fn get_latest_version_tag(
+/// All matching [`VersionTag`]s, in no particular order.
+pub fn get_all_version_tags(
     repository: &Repository,
     tag_format: &str,
-) -> Result<Option<VersionTag>, Box<dyn Error>> {
+) -> Result<Vec<VersionTag>, Box<dyn Error>> {
     let references: Vec<Reference> = repository
         .references()?
         .filter_map(|reference| reference.ok())
         .collect();
 
-    let version_tags: Vec<VersionTag> = references
+    Ok(references
         .iter()
         .filter(|reference| reference.is_tag())
         .filter_map(|reference| {
@@ -34,9 +35,55 @@ pub fn get_latest_version_tag(
                 .and_then(|tag| VersionTag::from_annotated_tag(&tag, tag_format))
                 .or_else(|| VersionTag::from_lightweight_tag(reference, tag_format))
         })
-        .collect();
+        .collect())
+}
 
-    Ok(version_tags.iter().max().cloned())
+/// Get the latest version tag.
+///
+/// `tag_format` describes the shape of version tags, e.g. `"v{version}"`; the
+/// literal `{version}` placeholder marks where the semantic version sits.
+/// ## Returns
+/// [`VersionTag`] containing the latest version tag.
+pub fn get_latest_version_tag(
+    repository: &Repository,
+    tag_format: &str,
+) -> Result<Option<VersionTag>, Box<dyn Error>> {
+    Ok(get_all_version_tags(repository, tag_format)?
+        .into_iter()
+        .max())
+}
+
+/// Render `version` into a tag name, following `tag_format`.
+///
+/// The inverse of [`VersionTag::parse_version_from_tag_name`]: the literal `{version}`
+/// placeholder in `tag_format` is replaced with `version`, e.g. `render_tag("v{version}", ...)`
+/// for version `1.2.3` yields `"v1.2.3"`.
+pub fn render_tag(tag_format: &str, version: &Version) -> String {
+    tag_format.replace("{version}", &version.to_string())
+}
+
+/// Create the release tag for `version` at `commit_oid`, unless it's already covered by a tag
+/// found in `found_tag_names` or by this run's `catch_up_tag`.
+///
+/// ## Returns
+///
+/// The tag's name if one was created, `None` if `version` was already tagged.
+pub fn create_release_tag(
+    repository: &impl RepositoryExtension,
+    tag_format: &str,
+    version: &Version,
+    commit_oid: Oid,
+    found_tag_names: &[String],
+    catch_up_tag: &Option<String>,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let tag_name = render_tag(tag_format, version);
+    let already_tagged = catch_up_tag.as_deref() == Some(tag_name.as_str())
+        || found_tag_names.iter().any(|name| name == &tag_name);
+    if already_tagged {
+        return Ok(None);
+    }
+    repository.create_tag(&tag_name, commit_oid)?;
+    Ok(Some(tag_name))
 }
 
 trait AnnotatedTag {
@@ -110,6 +157,182 @@ impl VersionTag {
         );
         let captures = Regex::new(&pattern).ok()?.captures(tag_name)?;
         Version::parse(&captures[1]).ok()
+    }
+}
+
+#[cfg(test)]
+mod get_all_version_tags_tests {
+    use crate::repo::prelude::RepositoryExtension;
+    use crate::test_util::repo_init;
+    pub use crate::test_util::RepositoryTestExtensions;
+    use semver::Version;
+    use std::collections::HashSet;
+
+    #[test]
+    fn returns_an_empty_vec_without_tags() {
+        // Given
+        let (_temp_dir, repository) = repo_init(Some(vec![":tada: initial release"]));
+
+        // When
+        let result = repository.get_all_version_tags("v{version}").unwrap();
+
+        // Then
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn returns_every_matching_version_tag() {
+        // Given
+        let commit_messages = vec![
+            ":tada: initial release",
+            ":sparkles: new feature",
+            ":boom: everything is broken",
+        ];
+        let (_temp_dir, repository) = repo_init(Some(commit_messages.clone()));
+        let tags = vec!["v1.0.0", "v1.1.0", "v2.0.0"];
+        commit_messages
+            .iter()
+            .map(|commit| repository.find_commit_by_message(commit).unwrap())
+            .zip(tags)
+            .for_each(|(commit_id, tag)| repository.add_tag(commit_id, tag));
+
+        // When
+        let result = repository.get_all_version_tags("v{version}").unwrap();
+
+        // Then
+        let versions: HashSet<Version> = result.into_iter().map(|tag| tag.version).collect();
+        assert_eq!(
+            versions,
+            HashSet::from([
+                Version::new(1, 0, 0),
+                Version::new(1, 1, 0),
+                Version::new(2, 0, 0),
+            ])
+        );
+    }
+
+    #[test]
+    fn ignores_tags_that_do_not_match_the_format() {
+        // Given
+        let commit_message = ":tada: initial release";
+        let (_temp_dir, repository) = repo_init(Some(vec![commit_message]));
+        let commit = repository.find_commit_by_message(commit_message);
+        repository.add_tag(commit.unwrap(), "not-a-version-tag");
+
+        // When
+        let result = repository.get_all_version_tags("v{version}").unwrap();
+
+        // Then
+        assert!(result.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod render_tag_tests {
+    use crate::repo::version_tag::render_tag;
+    use semver::Version;
+
+    #[test]
+    fn renders_the_default_tag_format() {
+        // Given
+        let version = Version::new(1, 2, 3);
+
+        // When
+        let result = render_tag("v{version}", &version);
+
+        // Then
+        assert_eq!(result, "v1.2.3");
+    }
+
+    #[test]
+    fn renders_a_custom_tag_format() {
+        // Given
+        let version = Version::new(1, 2, 3);
+
+        // When
+        let result = render_tag("release-{version}", &version);
+
+        // Then
+        assert_eq!(result, "release-1.2.3");
+    }
+}
+
+#[cfg(test)]
+mod create_release_tag_tests {
+    use crate::repo::prelude::RepositoryExtension;
+    use crate::repo::version_tag::create_release_tag;
+    use crate::test_util::repo_init;
+    use semver::Version;
+
+    #[test]
+    fn creates_a_tag_at_the_given_commit_when_none_exists_for_the_version() {
+        // Given
+        let (_temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let commit_oid = repository.head_commit_oid().unwrap();
+
+        // When
+        let result = create_release_tag(
+            &repository,
+            "v{version}",
+            &Version::new(1, 1, 0),
+            commit_oid,
+            &[],
+            &None,
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), Some("v1.1.0".to_string()));
+        let tags = repository.get_all_version_tags("v{version}").unwrap();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].version, Version::new(1, 1, 0));
+    }
+
+    #[test]
+    fn skips_when_the_version_is_already_in_found_tags() {
+        // Given
+        let (_temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let commit_oid = repository.head_commit_oid().unwrap();
+
+        // When
+        let result = create_release_tag(
+            &repository,
+            "v{version}",
+            &Version::new(1, 1, 0),
+            commit_oid,
+            &["v1.1.0".to_string()],
+            &None,
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), None);
+        assert!(repository
+            .get_all_version_tags("v{version}")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn skips_when_the_version_matches_this_run_s_catch_up_tag() {
+        // Given
+        let (_temp_dir, repository) = repo_init(Some(vec!["initial commit"]));
+        let commit_oid = repository.head_commit_oid().unwrap();
+
+        // When
+        let result = create_release_tag(
+            &repository,
+            "v{version}",
+            &Version::new(1, 1, 0),
+            commit_oid,
+            &[],
+            &Some("v1.1.0".to_string()),
+        );
+
+        // Then
+        assert_eq!(result.unwrap(), None);
+        assert!(repository
+            .get_all_version_tags("v{version}")
+            .unwrap()
+            .is_empty());
     }
 }
 

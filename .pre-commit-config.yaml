@@ -20,3 +20,10 @@ repos:
         language: rust
         types: [ rust ]
         args: [ "--code=99", "--" ]
+      - id: hugo-build
+        name: hugo build
+        description: Verify the Hugo docs site builds
+        entry: bash -c 'cd docs && hugo --gc --minify'
+        language: system
+        files: ^docs/
+        pass_filenames: false

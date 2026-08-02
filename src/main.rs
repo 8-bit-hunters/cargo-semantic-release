@@ -1,11 +1,11 @@
 extern crate cargo_semantic_release;
-use cargo_semantic_release::{Changes, RepositoryExtension, SemanticReleaseConfig};
 use clap::Parser;
 use clap_cargo::style;
-use git2::Repository;
-use semver::Version;
-use std::{env, process};
+use command::undo::UndoArgs;
+use command::version::VersionArgs;
 
+mod command;
+mod undo_state;
 mod version;
 
 #[derive(Parser)]
@@ -18,7 +18,26 @@ enum CargoCli {
 
 #[derive(clap::Args)]
 #[command(version, about, display_name = "semantic-release")]
-struct SemanticReleaseArgs {}
+struct SemanticReleaseArgs {
+    /// Run without making any changes: no files written, no commits, tags, or pushes made
+    #[arg(long, global = true)]
+    noop: bool,
+
+    /// Increase output verbosity: -vv also prints the commits since the last version tag
+    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
+    verbose: u8,
+
+    #[command(subcommand)]
+    command: SemanticReleaseCommand,
+}
+
+#[derive(clap::Subcommand)]
+enum SemanticReleaseCommand {
+    /// Compute and print the next semantic version derived from commit history
+    Version(VersionArgs),
+    /// Undo the changes made by the last `version` run
+    Undo(UndoArgs),
+}
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
     .header(style::HEADER)
@@ -30,55 +49,22 @@ pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling:
     .invalid(style::INVALID);
 
 fn main() {
-    // If the clap parser finds the --version or --help argument it will
-    // show the version and help information respectively. Then it will exit.
-    // When no arguments are found the application will just continue after
-    // the parse step.
-    let _ = CargoCli::parse();
+    let CargoCli::SemanticRelease(args) = CargoCli::parse();
 
-    let path = env::current_dir().unwrap_or_else(|error| {
-        eprintln!("Error during getting the current directory:\n\t{error}");
-        process::exit(1);
-    });
-    println!("Current directory: {}", path.display());
+    if args.noop {
+        println!(
+            "Running in no-operation mode (--noop): no files will be written, and no commits, \
+             tags, or pushes will be made."
+        );
+    }
 
-    let cargo_version =
-        version::get_cargo_version(&path.join("Cargo.toml")).unwrap_or_else(|error| {
-            eprintln!("Error during reading Cargo.toml:\n\t{error}");
-            process::exit(1);
-        });
-    println!("Cargo.toml version: {cargo_version}");
+    let verbosity = args.verbose;
+    let noop = args.noop;
 
-    let config = SemanticReleaseConfig::discover(&path).unwrap_or_else(|error| {
-        eprintln!("Error during reading semantic-release config:\n\t{error}");
-        process::exit(1);
-    });
-
-    let git_repo = Repository::open(&path).unwrap_or_else(|error| {
-        eprintln!("Error during opening repository:\n\t{error}");
-        process::exit(1);
-    });
-
-    let latest_version_tag = git_repo
-        .get_latest_version_tag(&config.tag_format)
-        .unwrap_or_else(|error| {
-            eprintln!("Error during fetching the latest version tag:\n\t{error}");
-            process::exit(1);
-        });
-    let current_version = latest_version_tag
-        .map(|tag| tag.version)
-        .unwrap_or_else(|| Version::new(0, 0, 0));
-    println!("Repo's version: {current_version}");
-
-    let changes = Changes::from_repo(&git_repo, &config).unwrap_or_else(|error| {
-        eprintln!("Error during fetching changes from repository:\n\t{error}");
-        process::exit(1);
-    });
-    println!("Changes in the repository:\n{changes}");
-
-    let action = changes.define_action_for_semantic_version();
-    println!("Action for semantic version ➡️ {action}");
-
-    let updated_version = action.apply(&current_version);
-    println!("Updated version: {updated_version}");
+    match args.command {
+        SemanticReleaseCommand::Version(version_args) => {
+            command::version::run_version_command(version_args, verbosity, noop)
+        }
+        SemanticReleaseCommand::Undo(undo_args) => command::undo::run_undo_command(undo_args, noop),
+    }
 }

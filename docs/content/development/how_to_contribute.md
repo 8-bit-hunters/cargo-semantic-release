@@ -54,7 +54,7 @@ cascade:
    cargo test
    ```
 
-4. **Build and Test**
+5. **Build the Docs**
    The project documentation is generated using Hugo. Install the following requirements:
 
    - [Go](https://go.dev/)

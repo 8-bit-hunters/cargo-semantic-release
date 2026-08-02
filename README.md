@@ -29,12 +29,48 @@ This will globally install the `cargo-semantic-release` binary.
 You can run the tool in the directory of your choice via `Cargo` with the following command.
 
 ```shell
-cargo semantic-release
+cargo semantic-release version
 ```
 
-This will print out the `major`, `minor`, `patch` related changes and the `other` changes.
-Also, it will indicate the recommended action for the semantic version, and the resulting new
-version number.
+By default, this writes the computed next version to `Cargo.toml`, commits the bump, tags the
+release, and pushes both to `origin`, printing the resulting version, e.g. `Next version: 1.2.3`.
+
+Pass `-v` to also print the `Cargo.toml` version, the tags found, and the latest tagged version;
+pass `-vv` to additionally print the commits since the last version tag, grouped into `major`,
+`minor`, `patch`, and `other`.
+
+Other flags for `version`:
+
+- `--noop` — preview the run without writing, committing, tagging, or pushing anything.
+- `--major` / `--minor` / `--patch` — force that bump instead of deriving one from commit history.
+- `--no-commit` — skip creating the bump commit.
+- `--no-push` — skip pushing the bump commit and any created tags to `origin`.
+- `--print-tag` — print the next version's tag (e.g. `v1.2.3`) instead of the bare version.
+
+### Undoing a run
+
+```shell
+cargo semantic-release undo
+```
+
+Restores `Cargo.toml` to its previous version and removes the bump commit and any tags `version`
+created, deleting those tags from `origin` too if they were pushed. It refuses to undo if `HEAD`
+has moved since the bump commit was created; pass `--force` to undo anyway. Pass `--noop` to
+preview what would be undone without changing anything.
+
+### Running in CI
+
+`cargo semantic-release version` commits the bump and pushes it, so it needs `HEAD` checked
+out on a real branch. Most CI providers check out a detached `HEAD` by default (e.g. GitHub
+Actions' `actions/checkout`), which leaves nothing for the push to update — the bump commit
+would only be reachable via its tag, never merged into your branch. Point the checkout at the
+branch explicitly, e.g. with `actions/checkout`:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    ref: ${{ github.ref_name }}
+```
 
 ## Configuration
 
@@ -108,6 +144,37 @@ patch_tags = [
 ## Library
 
 The utility functions for the binary are available in a [library crate](https://docs.rs/crate/cargo-semantic-release/).
+
+## Documentation
+
+The [docs site](https://8-bit-hunters.github.io/cargo-semantic-release/) lives under `docs/` and is built with
+[Hugo](https://gohugo.io/) (extended edition) using the [Hextra](https://github.com/imfing/hextra) theme, pulled in
+as a Hugo Module. Building it also requires a Go toolchain, since Hugo shells out to `go` to resolve the theme
+module.
+
+Requires Go >= 1.23.6 (per `docs/go.mod`) and Hugo Extended (tested with v0.164.0).
+
+To preview it locally:
+
+```shell
+cd docs
+hugo server
+```
+
+To produce a production build (output in `docs/public/`):
+
+```shell
+cd docs
+hugo --gc --minify
+```
+
+The theme version is pinned in `docs/go.mod`/`docs/go.sum`. Bump it with:
+
+```shell
+cd docs
+hugo mod get github.com/imfing/hextra@<version>
+hugo mod tidy
+```
 
 ## Links
 

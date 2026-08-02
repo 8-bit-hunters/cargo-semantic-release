@@ -307,6 +307,7 @@ mod changes_tests {
     use git2::Oid;
     use semver::Version;
     use std::error::Error;
+    use std::path::Path;
 
     struct MockedRepository {
         commits: Vec<GitmojiCommit>,
@@ -373,6 +374,37 @@ mod changes_tests {
             } else {
                 Ok(self.latest_version_tag.clone())
             }
+        }
+
+        fn get_all_version_tags(
+            &self,
+            _tag_format: &str,
+        ) -> Result<Vec<VersionTag>, Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
+        fn head_commit_oid(&self) -> Result<Oid, Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
+        fn create_tag(&self, _name: &str, _target_oid: Oid) -> Result<Oid, Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
+        fn commit_file(&self, _path: &Path, _message: &str) -> Result<Oid, Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
+        fn delete_tag(&self, _name: &str) -> Result<(), Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
+        fn reset_soft_to(&self, _oid: Oid) -> Result<(), Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
+        }
+
+        fn commit_parent_oid(&self, _oid: Oid) -> Result<Oid, Box<dyn Error>> {
+            unimplemented!("not exercised by these tests")
         }
     }
 
