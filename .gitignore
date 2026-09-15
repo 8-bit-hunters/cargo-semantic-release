@@ -29,3 +29,6 @@ hugo.linux
 
 # Temporary lock file while building
 docs/.hugo_build.lock
+
+# Notes during development
+.notes/
