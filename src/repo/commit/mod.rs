@@ -2,6 +2,7 @@ pub use crate::repo::commit::gitmoji::{Gitmoji, GitmojiCommit};
 use thiserror::Error;
 
 mod gitmoji;
+mod scope;
 
 pub trait CommitInterface {
     type Error;
