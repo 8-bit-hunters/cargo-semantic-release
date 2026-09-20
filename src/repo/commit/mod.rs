@@ -10,6 +10,7 @@ pub trait CommitInterface {
     fn message(&self) -> &str;
     fn hash(&self) -> &str;
     fn intention(&self) -> &Gitmoji;
+    fn scopes(&self) -> &[String];
 }
 
 #[derive(Debug, Error, PartialEq)]

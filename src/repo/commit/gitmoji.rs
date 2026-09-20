@@ -1,3 +1,4 @@
+use crate::repo::commit::scope::{CommitScopeParser, GitmojiCommitScopeParser};
 use crate::repo::commit::{Commit, CommitError, CommitInterface};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -7,16 +8,16 @@ pub struct GitmojiCommit {
     pub message: String,
     hash: String,
     intention: Gitmoji,
-    scope: String,
+    scopes: Vec<String>,
 }
 
 impl GitmojiCommit {
-    pub fn new(message: String, hash: String, intention: Gitmoji, scope: String) -> Self {
+    pub fn new(message: String, hash: String, intention: Gitmoji, scopes: Vec<String>) -> Self {
         Self {
             message,
             hash,
             intention,
-            scope,
+            scopes,
         }
     }
 
@@ -33,11 +34,13 @@ impl GitmojiCommit {
             .trim_start()
             .to_string();
 
+        let scopes = GitmojiCommitScopeParser::parse_scopes(message.as_str());
+
         Ok(Self {
             message,
             hash,
             intention,
-            scope: "".to_string(),
+            scopes,
         })
     }
 }
@@ -97,6 +100,10 @@ impl CommitInterface for GitmojiCommit {
     fn intention(&self) -> &Gitmoji {
         &self.intention
     }
+
+    fn scopes(&self) -> &[String] {
+        &self.scopes
+    }
 }
 
 #[cfg(test)]
@@ -123,7 +130,7 @@ mod gitmoji_commit_tests {
             message: "initial commit".to_string(),
             hash,
             intention: Gitmoji::Tada,
-            scope: "".to_string(),
+            scopes: vec![],
         };
         assert_eq!(result, expected_result)
     }
@@ -591,5 +598,73 @@ mod test_gitmoji {
 
         // Then
         assert_eq!(result, None);
+    }
+}
+
+#[cfg(test)]
+mod test_scopes_accessor {
+    use super::*;
+
+    #[test]
+    fn when_commit_has_no_scopes() {
+        // Given
+        let commit = GitmojiCommit::new(
+            "Add feature".to_string(),
+            "abc123".to_string(),
+            Gitmoji::Sparkles,
+            vec![],
+        );
+
+        // When
+        let scopes = commit.scopes();
+
+        // Then
+        assert_eq!(
+            scopes,
+            Vec::<String>::new(),
+            "a commit with no scopes should return an empty slice"
+        );
+    }
+
+    #[test]
+    fn when_commit_has_single_scope() {
+        // Given
+        let commit = GitmojiCommit::new(
+            "Add feature".to_string(),
+            "abc123".to_string(),
+            Gitmoji::Sparkles,
+            vec!["my-crate".to_string()],
+        );
+
+        // When
+        let scopes = commit.scopes();
+
+        // Then
+        assert_eq!(
+            scopes,
+            vec!["my-crate"],
+            "a commit with a single scope should return that scope"
+        );
+    }
+
+    #[test]
+    fn when_commit_has_multiple_scopes() {
+        // Given
+        let commit = GitmojiCommit::new(
+            "Add feature".to_string(),
+            "abc123".to_string(),
+            Gitmoji::Sparkles,
+            vec!["pkg1".to_string(), "pkg2".to_string()],
+        );
+
+        // When
+        let scopes = commit.scopes();
+
+        // Then
+        assert_eq!(
+            scopes,
+            vec!["pkg1", "pkg2"],
+            "a commit with multiple scopes should return all of them"
+        );
     }
 }
