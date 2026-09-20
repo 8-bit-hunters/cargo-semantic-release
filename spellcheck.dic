@@ -13,3 +13,12 @@ config
 emoji
 changelog
 whitespace
+toml
+tuple
+=
++
+-
+cargo_path
+workspaces
+deduplicated
+filesystem
