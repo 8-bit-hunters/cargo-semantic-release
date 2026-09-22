@@ -41,6 +41,7 @@ use std::collections::HashSet;
 use std::io::{Error as IoError, ErrorKind};
 use std::path::Path;
 use thiserror::Error;
+use tracing::{debug, trace, warn};
 
 /// A workspace implementation for Cargo projects.
 ///
@@ -94,21 +95,33 @@ impl CargoWorkspace {
     /// let packages = workspace.package_names();
     /// ```
     #[allow(dead_code)]
+    #[tracing::instrument(name = "load_workspace")]
     pub fn from_path(path: &Path) -> Result<Self, CargoWorkspaceError> {
         let manifest = Self::load_manifest(path)?;
+        debug!("Successfully loaded manifest");
+
         let base_dir = Self::load_base_dir(path)?;
+        trace!(base_dir = %base_dir.display(), "Base directory resolved");
 
         let mut packages = HashSet::new();
 
         if let Some(pkg) = manifest.package {
+            trace!(package = %pkg.name, "Adding root package");
             packages.insert(pkg.name);
         }
 
         if let Some(workspace) = manifest.workspace {
+            debug!(
+                member_count = workspace.members.len(),
+                "Processing workspace members"
+            );
             Self::add_workspace_members(&mut packages, base_dir, &workspace)?;
         }
 
+        debug!(package_count = packages.len(), packages = ?packages, "Workspace loaded");
+
         if packages.is_empty() {
+            warn!(path = %path.display(), "No packages found in workspace");
             return Err(CargoWorkspaceError::NoPackagesFound(
                 path.display().to_string(),
             ));
@@ -123,8 +136,11 @@ impl CargoWorkspace {
     ///
     /// Returns [`CargoWorkspaceError::ManifestLoadError`] if the manifest cannot be loaded or parsed.
     fn load_manifest(path: &Path) -> Result<Manifest, CargoWorkspaceError> {
-        Manifest::from_path(path)
-            .map_err(|e| CargoWorkspaceError::ManifestLoadError(path.display().to_string(), e))
+        trace!(path = %path.display(), "Loading manifest");
+        Manifest::from_path(path).map_err(|e| {
+            warn!(path = %path.display(), error = %e, "Failed to load manifest");
+            CargoWorkspaceError::ManifestLoadError(path.display().to_string(), e)
+        })
     }
 
     /// Gets the base directory for resolving workspace member paths.
@@ -137,7 +153,9 @@ impl CargoWorkspace {
     /// Returns [`CargoWorkspaceError::ManifestLoadError`] if the path has no parent
     /// (e.g., root filesystem path).
     fn load_base_dir(path: &Path) -> Result<&Path, CargoWorkspaceError> {
+        trace!(path = %path.display(), "Getting base directory");
         path.parent().ok_or_else(|| {
+            warn!(path = %path.display(), "Path has no parent");
             CargoWorkspaceError::ManifestLoadError(
                 path.display().to_string(),
                 cargo_toml::Error::Io(IoError::new(
@@ -164,15 +182,20 @@ impl CargoWorkspace {
         base_dir: &Path,
         workspace: &cargo_toml::Workspace,
     ) -> Result<(), CargoWorkspaceError> {
+        trace!(member_count = workspace.members.len(), "Processing members");
+
         let mut member_names: Vec<String> = workspace.members.clone();
 
         for excluded in &workspace.exclude {
+            trace!(excluded = %excluded, "Applying exclusion filter");
             member_names.retain(|name| name != excluded);
         }
 
         for member_path in member_names {
+            trace!(member = %member_path, "Loading member");
             let member_manifest_path = base_dir.join(&member_path).join("Cargo.toml");
             let package_name = Self::load_member_package_name(&member_manifest_path)?;
+            trace!(member = %member_path, package = %package_name, "Member resolved");
             packages.insert(package_name);
         }
 
@@ -186,10 +209,14 @@ impl CargoWorkspace {
     /// Returns [`CargoWorkspaceError::ManifestLoadError`] if the manifest cannot be loaded.
     /// Returns [`CargoWorkspaceError::NoPackagesFound`] if the manifest has no package name.
     fn load_member_package_name(path: &Path) -> Result<String, CargoWorkspaceError> {
+        trace!(path = %path.display(), "Loading member package name");
         Self::load_manifest(path)?
             .package
             .map(|pkg| pkg.name)
-            .ok_or_else(|| CargoWorkspaceError::NoPackagesFound(path.display().to_string()))
+            .ok_or_else(|| {
+                warn!(path = %path.display(), "No package name found in manifest");
+                CargoWorkspaceError::NoPackagesFound(path.display().to_string())
+            })
     }
 }
 
