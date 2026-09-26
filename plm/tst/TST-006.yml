@@ -1,0 +1,28 @@
+active: true
+derived: false
+header: ''
+level: 1.6
+links:
+- REQ-027: JfW5exP2Bo--yvtOd4i358FAdGA5-i6rWjoi1lsWJ5w=
+normative: true
+ref: ''
+references:
+- keyword: '@TST-006'
+  path: tests/features/version.feature
+  type: file
+reviewed: KIC8sK2aJGpnhACxpCNNkhHHtSJ2QgX7r1JHgAvUQjA=
+scenario_hash: 7091149af596384647381243ce1a38063e0eadb0db34c47f0864f69985760f9f
+text: |
+  Proposing a version without publishing it
+
+  ```gherkin
+  Scenario: Proposing a version without publishing it
+    Given the following changes were recorded since then
+      | change                                       |
+      | an addition that leaves existing use working |
+    When a version is proposed for the next publication
+    Then the work still carries version "1.0.0"
+    And no publication is recorded
+  ```
+
+  _Generated from `tests/features/version.feature`; edit the feature file, not this item._

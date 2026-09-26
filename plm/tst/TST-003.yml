@@ -1,0 +1,27 @@
+active: true
+derived: false
+header: ''
+level: 1.3
+links:
+- REQ-020: 0LY7VhXydAhnYaj8oKVi6cVZyJ195MH-OY3aa5GbA7c=
+normative: true
+ref: ''
+references:
+- keyword: '@TST-003'
+  path: tests/features/version.feature
+  type: file
+reviewed: j9wkP7_xtwvbFRgLgGKPWGVv4QaDrlyNX85SFXdBiAc=
+scenario_hash: fc3e987420e74bae4466dfb09ce99bf81eaa837e41c68389e40d4f7d1fd5baf1
+text: |
+  Proposing a version after nothing but a correction
+
+  ```gherkin
+  Scenario: Proposing a version after nothing but a correction
+    Given the following changes were recorded since then
+      | change       |
+      | a correction |
+    When a version is proposed for the next publication
+    Then the proposed version is "1.0.1"
+  ```
+
+  _Generated from `tests/features/version.feature`; edit the feature file, not this item._

@@ -22,3 +22,7 @@ cargo_path
 workspaces
 deduplicated
 filesystem
+UID
+UIDs
+Doorstop
+Gherkin

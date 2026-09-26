@@ -1,0 +1,28 @@
+active: true
+derived: false
+header: ''
+level: 1.1
+links:
+- REQ-018: 45aSdql1yZm2B_aW4ywD7szZ9VjPqNC9pQib7FTdDJg=
+normative: true
+ref: ''
+references:
+- keyword: '@TST-001'
+  path: tests/features/version.feature
+  type: file
+reviewed: XfbrVLdMOgNqH3cslFBnlU8ARFMfyZ4xsclucd-LbA8=
+scenario_hash: dd387a7ea641914aad883e829fb527d9296f4d2490fde9e5f2e5c57b6dfe1524
+text: |
+  Proposing a version after a change that breaks how the work is used
+
+  ```gherkin
+  Scenario: Proposing a version after a change that breaks how the work is used
+    Given the following changes were recorded since then
+      | change                                       |
+      | a change that breaks how the work is used    |
+      | an addition that leaves existing use working |
+    When a version is proposed for the next publication
+    Then the proposed version is "2.0.0"
+  ```
+
+  _Generated from `tests/features/version.feature`; edit the feature file, not this item._

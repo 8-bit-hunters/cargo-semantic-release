@@ -35,3 +35,9 @@ test_util = []
 cargo-semantic-release = { path = ".", features = ["test_util"] }
 cucumber = "0.23"
 futures = "0.3"
+
+# Executable specification: the Gherkin scenarios in `tests/features`, traced from the Doorstop
+# items in `reqs/tst`. `harness = false` lets Cucumber print its own output.
+[[test]]
+name = "features"
+harness = false

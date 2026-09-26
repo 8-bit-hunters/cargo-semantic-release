@@ -1,0 +1,26 @@
+active: true
+derived: false
+header: |
+  Deciding the version of the next publication
+level: 1.0
+links: []
+normative: false
+ref: ''
+references:
+- path: tests/features/version.feature
+  type: file
+reviewed: FfZbTYI2rRXkLxan32XKoB1Hx8lDJlra4Dzvix6D8UM=
+text: |
+  As the maintainer of a published work
+  I want the number of its next publication decided from the record of changes made since the last one
+  So that the number alone tells a reader what kind of change to expect
+
+  A clerk could do this by hand: read what each recorded change did, and number the next publication
+  accordingly.
+
+  ```gherkin
+  Background:
+    Given the work was last published as version "1.0.0"
+  ```
+
+  _Generated from `tests/features/version.feature`; edit the feature file, not this item._

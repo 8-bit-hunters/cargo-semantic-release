@@ -1,0 +1,8 @@
+settings:
+  digits: 3
+  parent: REQ
+  prefix: TST
+  sep: '-'
+attributes:
+  reviewed:
+  - scenario_hash
