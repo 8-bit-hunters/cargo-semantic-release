@@ -67,7 +67,9 @@ satisfy it. A requirement states what the tool must do and outlives any particul
 how; a decision, in contrast, is only understandable against the requirement that motivated it. A
 requirement that named its ADRs would also have to be revisited whenever one of them is superseded,
 which is exactly the coupling this avoids. The direction is checked rather than trusted: an ADR naming
-a UID that is not an active item fails the `Requirements` workflow.
+a UID that is not an active item fails the `Requirements` workflow. A citation is written as a link to
+the item file, which reads correctly in the repository and which the site turns into a link to that
+requirement on its published page.
 
 Doorstop is a Python tool, run through `uvx` as the project already runs `pre-commit` and `pyadr`.
 Nothing is added to `Cargo.toml`, and contributors need no permanent Python installation. The helper

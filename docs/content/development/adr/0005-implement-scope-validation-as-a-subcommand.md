@@ -29,6 +29,7 @@ We need a mechanism to:
 * Simplicity: Minimal code complexity and maintenance burden
 * Coherence: Keep related functionality together where it makes sense
 * Extensibility: Allow for future enhancements (e.g., custom scope validation rules)
+* Requirements: [REQ-014](../../../../plm/req/REQ-014.md) (commit scope validation)
 
 ## Considered Options
 

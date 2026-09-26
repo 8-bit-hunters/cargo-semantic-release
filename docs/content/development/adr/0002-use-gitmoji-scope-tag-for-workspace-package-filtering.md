@@ -32,6 +32,8 @@ paths to package directories — an approach that is complex, slow, fragile, and
 * Conventional: Follow existing standards where possible (Conventional Commits)
 * Backward Compatibility: Ensure existing projects continue to work
 * Developer Experience: Make the behavior intuitive and controllable by developers
+* Requirements: [REQ-012](../../../../plm/req/REQ-012.md) (the commit scope declares the affected packages) and [REQ-013](../../../../plm/req/REQ-013.md)
+  (workspace package discovery)
 
 ## Considered Options
 

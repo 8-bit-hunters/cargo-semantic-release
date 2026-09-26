@@ -26,6 +26,7 @@ This decision is influenced by:
 * Simplicity: Minimal complexity for developers to understand and use
 * Compatibility: Work with Cargo's native behavior for path dependencies
 * Traceability: Single commit and tags make it easy to track what changed
+* Requirements: [REQ-016](../../../../plm/req/REQ-016.md) (batch release of a workspace)
 
 ## Considered Options
 

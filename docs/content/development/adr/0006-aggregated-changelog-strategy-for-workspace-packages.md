@@ -26,6 +26,7 @@ This decision is influenced by:
 * Maintainability: Avoid duplication, make it easy to keep changelogs up to date
 * Discoverability: Make it easy for users to find relevant changes
 * Automation: Enable tooling to generate changelogs automatically
+* Requirements: [REQ-017](../../../../plm/req/REQ-017.md) (workspace changelog)
 
 ## Considered Options
 

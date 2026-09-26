@@ -22,6 +22,7 @@ to be flexible enough to accommodate different workflows (independent package re
 * Backward Compatibility: Existing single-crate projects should continue to work
 * Explicit Control: Users should be able to configure the behavior
 * Tooling Integration: Should work with Cargo's native understanding of workspaces
+* Requirements: [REQ-015](../../../../plm/req/REQ-015.md) (per-package versions and tags)
 
 ## Considered Options
 
