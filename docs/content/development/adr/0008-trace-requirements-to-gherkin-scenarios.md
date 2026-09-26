@@ -53,7 +53,7 @@ Each scenario in `tests/features/` is tagged with the UID of its `TST` item:
 
 The item links to the requirement it verifies, refers to the feature file with the tag as the search
 keyword, and holds the scenario's title and the scenario itself as its text. All of that text is
-**generated** from the feature file by `scripts/trace_sync.py`; the item is stored in
+**generated** from the feature file by `tools/project`; the item is stored in
 Doorstop's default `yaml` format, since nothing in it is written by hand:
 
 ```yaml
@@ -100,7 +100,7 @@ time in `level` would leave two structures to keep in agreement with nothing che
 agree — the coupling this ADR set avoids elsewhere.
 
 Because the feature files decide the levels, the titles and the scenario text, everything in an item
-but its links and references is derived by `scripts/trace_sync.py`: `check` reports any difference and
+but its links and references is derived by `tools/project`: `check` reports any difference and
 fails, `sync` writes what the feature files imply. It deliberately never creates or deletes items, so
 that Doorstop keeps assigning UIDs. It reads the feature files with the Gherkin parser rather than by
 pattern matching, so `Rule:`, `Scenario Outline:`, doc strings and comments are understood rather than
@@ -158,7 +158,7 @@ stated without naming a flag is a sign that it has not been understood yet.
 That closes the loop in both directions. Doorstop reports an error when an item's keyword is no
 longer found in the referenced file, which covers a renamed, retagged, or deleted scenario. The
 opposite case — a scenario tagged with a UID that has no item — is covered by
-`scripts/trace_sync.py`, which runs alongside Doorstop in the `Requirements` workflow.
+`tools/project`, which runs alongside Doorstop in the `Requirements` workflow.
 
 The scenarios are executed by cucumber-rs as the `features` test target, driving the real binary
 in a throwaway git repository built with the existing `test_util` helpers. The unit tests and
@@ -213,7 +213,7 @@ command level, not the internals.
 
 This was originally rejected along with the hand-made copy above, on the grounds that a copy has to be
 maintained twice. Generation removes that objection: the edit is made once, in the feature file, and
-`scripts/trace_sync.py sync` writes the item. The check runs in CI, so a difference cannot
+`project req sync` writes the item. The check runs in CI, so a difference cannot
 survive a pull request.
 
 * Good, because the published document carries the behaviour, which Doorstop's references cannot

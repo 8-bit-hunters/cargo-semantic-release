@@ -1,0 +1,61 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["cyclopts>=5.0", "doorstop>=3.2", "gherkin-official>=29"]
+# ///
+"""The project's own command line: the routine tasks, each in the order that works.
+
+    tools/project --help          # every task
+    tools/project check           # what CI checks, in CI's order
+    tools/project req --help      # the requirements
+    tools/project docs serve      # publish the requirements, then serve the site
+
+It covers the tasks whose difficulty is knowing the order or the flags: the requirements, the
+traceability, and the documentation site. It deliberately does not wrap `cargo` or `prek` — those are
+single commands every contributor already knows, and putting a layer in front of them would only hide
+their options.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+# Run as a script, so make the sibling package importable before it is used.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import cyclopts  # noqa: E402
+
+from project_tasks import docs, requirements, trace  # noqa: E402
+from project_tasks.context import repo_root  # noqa: E402
+
+app = cyclopts.App(
+    name="project",
+    help="Routine tasks for cargo-semantic-release, in the right order.",
+)
+app.command(requirements.app)
+app.command(trace.app)
+app.command(docs.app)
+
+
+@app.command
+def check() -> int:
+    """Run every requirement check the CI runs, in the same order.
+
+    The tree first, so that a broken link or an unreviewed item is reported before anything else, then
+    the scenarios, the test items and the ADR citations.
+    """
+    failures = requirements.check() or 0
+    failures += trace.check() or 0
+    return 1 if failures else 0
+
+
+def main() -> int:
+    # Every task is relative to the project, not to wherever it was invoked from.
+    os.chdir(repo_root())
+    return app() or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
