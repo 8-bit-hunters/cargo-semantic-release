@@ -87,6 +87,33 @@ cascade:
   prek run --all-files   # or: pre-commit run --all-files
   ```
 
+### 📋 Requirements and Behaviours
+
+Requirements live in `plm/req/` and are managed with [Doorstop](https://doorstop.readthedocs.io/); the
+behaviours that verify them are Gherkin scenarios in `tests/features/`. See
+[Requirements](requirements.md) for how the two fit together.
+
+Requirements follow the SOPHIST MASTeR sentence pattern — a named system, an obligation, one main
+verb, and `IF` / `AS SOON AS` / `AS LONG AS` for conditions. Scenarios are written in the language of
+the work being published, not of the tool: no git, Cargo,
+flags, or output, and a title that gives the precondition and the action but not the outcome.
+Everything technical belongs in the step definitions in `tests/features.rs`. `TST` items are generated
+from the feature files — never edit one by hand.
+
+If you change a requirement or add a behaviour:
+
+```shell
+uvx --from doorstop doorstop          # validate the tree
+uvx --from doorstop doorstop review all   # accept your own changes
+uv run scripts/trace_sync.py --help       # what it does and what it takes
+uv run scripts/trace_sync.py check        # scenarios, items and ADR citations
+uv run scripts/trace_sync.py sync         # regenerate the items from the feature files
+cargo test --test features            # run the scenarios
+```
+
+Both checks also run in CI, which is the gate that counts — the Doorstop checks are deliberately
+not pre-commit hooks, since git hooks do not fire when committing with `jj`.
+
 ### ✨ Commit Messages (Gitmoji Style)
 
 We follow [Gitmoji](https://gitmoji.dev/) for structured commit messages. Each commit should start with an emoji that
@@ -103,6 +130,8 @@ Every push triggers the following GitHub Actions workflows:
 - **Tests** (`tests.yml`) — builds the project and runs `cargo test`.
 - **Pre-commit Checks** (`pre_commit_checks.yml`) — runs the same `pre-commit` hooks from `.pre-commit-config.yaml`
   (formatting, clippy, spellcheck, etc.) and reports status via `pre-commit.ci`.
+- **Requirements** (`requirements.yml`) — validates the Doorstop requirements tree in `plm/`, fails on
+  an unreviewed or suspect item, and checks the scenarios, the test items and the ADR citations.
 - **Semantic Release Preview** (`semantic_release.yml`) — on `main` and `action`, runs this repo's own action
   (`uses: ./`) to preview the next semantic version from Gitmoji commits, dogfooding the tool.
 

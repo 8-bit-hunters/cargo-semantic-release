@@ -1,0 +1,175 @@
+---
+title: Requirements
+cascade:
+    type: docs
+---
+
+## Requirements
+
+The requirements of this project are managed with [Doorstop](https://doorstop.readthedocs.io/),
+which keeps them as files in this repository, next to the code they describe.
+
+- [Published requirements](/requirements/) — the requirements and test items as a site.
+- [Traceability matrix](/requirements/traceability.html) — which behaviour covers which
+  requirement.
+
+### The two documents
+
+| Document | Location | Content |
+|----------|----------|---------|
+| `REQ` | `plm/req/` | What the tool must do, as prose, in Doorstop's `markdown` item format. |
+| `TST` | `plm/tst/` | One item per behaviour, each a child of the requirement it covers, in Doorstop's default `yaml` item format. |
+
+Architectural decisions are *not* part of this tree. They keep their own IDs and lifecycle as
+[Architecture Decision Records](adr/index.md).
+
+The reference between the two goes one way: an ADR names the requirements it serves among its
+decision drivers, and a requirement never mentions an ADR. A requirement says what the tool must
+do, which outlives the decisions taken to satisfy it; so an ADR can be superseded without any
+requirement needing a change.
+
+### Behaviours are Gherkin scenarios
+
+A `TST` item does not restate the behaviour it covers: the behaviour lives once, as a Gherkin
+scenario in `tests/features/`, tagged with the item's UID.
+
+```gherkin
+  @TST-003
+  Scenario: Proposing a version after nothing but a correction
+    Given the following changes were recorded since then
+      | change       |
+      | a correction |
+    When a version is proposed for the next publication
+    Then the proposed version is "1.0.1"
+```
+
+Those scenarios are executable: `cargo test --test features` runs them against the real binary in
+a throwaway git repository, with the step definitions in `tests/features.rs`.
+
+The item's text — its title and the scenario itself — is generated from the feature file, so the two
+cannot drift apart. It links to the requirement it verifies and refers to its scenario by tag:
+
+```yaml
+level: '1.3'
+links:
+- REQ-020: 0LY7VhXydAhnYaj8oKVi6cVZyJ195MH-OY3aa5GbA7c=
+references:
+- keyword: '@TST-003'
+  path: tests/features/version.feature
+  type: file
+text: |
+  Proposing a version after nothing but a correction
+
+  ```gherkin
+  Scenario: Proposing a version after nothing but a correction
+    ...
+  ```
+
+  _Generated from `tests/features/version.feature`; edit the feature file, not this item._
+```
+
+**Never edit a `TST` item by hand** — the next `--fix` overwrites it. Change the feature file instead.
+Because the scenario is part of the item's text, and so of its fingerprint, editing a scenario marks
+its item unreviewed: the behaviour that verifies a requirement changed and wants a look.
+
+### How the documents are structured
+
+`REQ` is grouped by capability: a non-normative heading item at level `<n>.0` carries the group's name
+and the motivation for it, and the requirements follow at `<n>.<m>`.
+
+`TST` mirrors the feature files instead: one heading item per file, whose header is the `Feature:` name
+and whose text is the feature's description and its `Background:`, with its scenarios beneath it in the
+order they appear. `scripts/trace_sync.py` derives the levels, the headers, the text and the scenario
+hashes from the feature files, reading them with the Gherkin parser and writing through Doorstop's own
+API:
+
+```shell
+uv run scripts/trace_sync.py check           # the mapping, the items and the ADR citations
+uv run scripts/trace_sync.py sync            # write what the feature files imply
+uv run scripts/trace_sync.py impact REQ-018  # which ADRs cite a requirement
+```
+
+`check` also refuses a scenario with no test tag, a tag on a `Feature:`, `Rule:` or `Examples:`, a tag
+used twice, and a test item no scenario carries — so an untraced scenario cannot slip in.
+
+A level whose last segment ends in a zero must be quoted in the item file (`level: '1.10'`); YAML
+otherwise reads it as a float and `1.10` becomes `1.1`.
+
+### Writing a requirement
+
+Requirements follow the [SOPHIST](https://www.sophist.de/) MASTeR sentence pattern, decided in
+[ADR-0009](adr/0009-formulate-requirements-with-the-sophist-master-patterns.md):
+
+```
+[<condition>] <system> <obligation> [<type of functionality>] <process verb> <object>
+```
+
+The system is always `cargo-semantic-release`. Two actors appear: **the maintainer**, who releases a
+crate, and **the contributor**, who writes the commit messages a release is derived from.
+
+| Type of functionality | Form | Used when |
+|-----------------------|------|-----------|
+| Autonomous | `shall <verb>` | the tool acts by itself |
+| User interaction | `shall provide <whom> with the ability to <verb>` | a person drives the action |
+| Interface | `shall be able to <verb>` | something outside the tool drives it |
+
+Obligations are **SHALL** (mandatory), **SHOULD** (wish) and **WILL** (future purpose, considered but
+not tested). Conditions are written `IF <logical expression>`, `AS SOON AS <event>` or
+`AS LONG AS <time period>`:
+
+> IF none of these commit messages records a breaking change and at least one records a new feature,
+> cargo-semantic-release shall increment the minor version of the crate.
+
+Three rules matter most when adding one:
+
+- **One main verb per requirement.** "Write the version and commit it" is two requirements.
+- **State the negative case.** A requirement that begins with `IF` needs a counterpart for when the
+  condition does not hold.
+- **State the exception.** After the standard path, say what happens when it fails.
+
+The heading items carry the motivation for each group and are non-normative: that is where a *so that*
+belongs, not in a requirement.
+
+### Writing a scenario
+
+**The title names the precondition and the action, not the outcome.** "Proposing a version after
+nothing but a correction" says which situation is examined and what is asked for; the answer belongs
+in the body.
+
+**The scenario speaks of the work being published, not of the tool.** A clerk could do this job by
+hand: read the record of changes made since a work was last published, and number the next
+publication accordingly. The scenarios are written as that job — changes are *recorded*, a version is
+*proposed*, a publication is *marked* — and say nothing about git, Cargo, commit messages, emoji,
+files, flags, or output.
+
+Everything technical lives in the step definitions. A scenario says
+
+```gherkin
+      | a change that breaks how the work is used |
+```
+
+and `tests/features.rs` is where that becomes a `:boom:` commit. Introducing a new phrase therefore
+means adding it to the translation in `commit_message_for`, which is deliberate: the vocabulary of
+the specification is meant to grow on purpose, not by accident.
+
+### Working with the requirements
+
+Doorstop is a Python tool; run it with [uv](https://docs.astral.sh/uv/) without installing
+anything permanently:
+
+```shell
+uvx --from doorstop doorstop              # validate the tree
+uvx --from doorstop doorstop add REQ      # add a requirement
+uvx --from doorstop doorstop add TST      # add a test item
+uvx --from doorstop doorstop link TST-007 REQ-005
+uvx --from doorstop doorstop review all   # accept your own changes
+uvx --from doorstop doorstop publish all ./public   # throwaway local copy, git-ignored
+```
+
+After changing an item, run `doorstop review` on it (or `doorstop review all`) and commit the
+updated fingerprints; a change to a requirement marks the items linked to it as suspect until
+`doorstop clear` confirms the child is still valid.
+
+The **Requirements** workflow validates the tree on every push: a broken link, or a reference to
+a scenario tag that no longer exists, fails the build. A requirement with no test item is only a
+warning, since most of the workspace requirements are not implemented yet.
