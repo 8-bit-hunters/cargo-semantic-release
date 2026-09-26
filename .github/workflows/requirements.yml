@@ -1,0 +1,23 @@
+name: Requirements
+
+on: [ "push" ]
+
+jobs:
+  validate:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Report the requirements tree
+        # Informational: a requirement without a scenario is a warning, and most of the workspace
+        # requirements have none yet.
+        run: uvx --from doorstop doorstop
+      - name: Validate the requirements tree
+        # The gate. `-C` drops the child-link warnings reported above, `-e` turns the remaining
+        # warnings into errors, so an unreviewed change or a suspect link fails the build.
+        run: uvx --from doorstop doorstop -C -e
+      - name: Check the scenarios, the test items and the ADR citations
+        run: uv run scripts/trace_sync.py check
