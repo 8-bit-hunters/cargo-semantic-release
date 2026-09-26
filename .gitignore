@@ -30,5 +30,13 @@ hugo.linux
 # Temporary lock file while building
 docs/.hugo_build.lock
 
+# Requirements published by doorstop during the Pages build
+docs/static/requirements/
+docs/content/development/requirements/REQ.md
+docs/content/development/requirements/TST.md
+
+# Local output of `doorstop publish`
+/public/
+
 # Notes during development
 .notes/
