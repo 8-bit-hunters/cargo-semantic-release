@@ -33,3 +33,5 @@ test_util = []
 
 [dev-dependencies]
 cargo-semantic-release = { path = ".", features = ["test_util"] }
+cucumber = "0.23"
+futures = "0.3"
