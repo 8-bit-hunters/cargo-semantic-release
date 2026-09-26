@@ -4,7 +4,11 @@ repos:
     hooks:
       - id: check-yaml
       - id: end-of-file-fixer
+        # Doorstop writes its item files without a trailing newline and rewrites them on
+        # every validation run, so leave `plm/` to Doorstop.
+        exclude: ^plm/
       - id: trailing-whitespace
+        exclude: ^plm/
   - repo: https://github.com/doublify/pre-commit-rust
     rev: v1.0
     hooks:
