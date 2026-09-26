@@ -10,6 +10,9 @@
 * [0004 - Batch release strategy for workspace packages](0004-batch-release-strategy-for-workspace-packages.md)
 * [0005 - Implement scope validation as a subcommand](0005-implement-scope-validation-as-a-subcommand.md)
 * [0006 - Aggregated changelog strategy for workspace packages](0006-aggregated-changelog-strategy-for-workspace-packages.md)
+* [0007 - Use Doorstop for requirements management](0007-use-doorstop-for-requirements-management.md)
+* [0008 - Trace requirements to Gherkin scenarios](0008-trace-requirements-to-gherkin-scenarios.md)
+* [0009 - Formulate requirements with the SOPHIST MASTeR patterns](0009-formulate-requirements-with-the-sophist-master-patterns.md)
 
 ## Rejected Records
 
