@@ -7,10 +7,35 @@ module:
   mounts:
     - source: content
       target: content
+      excludeFiles:
+        # `pyadr` generates the table of contents as `index.md`, which would make the ADR directory a
+        # leaf bundle and its records page resources rather than pages. It is mounted below as the
+        # section index instead. The MADR template is not a record.
+        - development/adr/index.md
+        - development/adr/template.md
     - source: i18n
       target: i18n
     - source: ../README.md
       target: content/_index.md
+    # The `pyadr` table of contents is the ADR section's index page.
+    - source: content/development/adr/index.md
+      target: content/development/adr/_index.md
+
+# The ADR section's index is the `pyadr`-generated table of contents, which carries no front matter,
+# so its navigation label is set here. `linkTitle` rather than `title`: the theme renders a heading
+# from `title`, and the table of contents already starts with one.
+cascade:
+  - _target:
+      path: /development/adr
+    linkTitle: Architecture Decision Records
+  # The records are listed by the table of contents, which is the section's index page, and grouped
+  # there by status. Keeping them out of page collections keeps the navigation tree to one entry per
+  # section instead of one per record; `render` leaves the pages themselves published.
+  - _target:
+      path: /development/adr/*
+    build:
+      list: never
+      render: always
 
 params:
   footer:

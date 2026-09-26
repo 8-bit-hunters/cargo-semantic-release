@@ -1,0 +1,54 @@
+{{- /*
+  Rewrite links to Markdown files so they work both in the repository and on the site.
+
+  The content links to files as `0008-trace-requirements-to-gherkin-scenarios.md`, which is what a
+  reader browsing the repository needs, and what `pyadr` generates in the ADR index. Hugo serves
+  those pages at a pretty URL, so without this hook every such link is a 404 on the site — and
+  simply trimming the `.md` is not enough, because a pretty URL adds a directory level and a
+  relative link then resolves inside the current page. Asking Hugo for the page and using its
+  `RelPermalink` gets it right at any depth.
+
+  A link to `<dir>/index.md` falls back to the section itself: the ADR index is excluded from the
+  site (see hugo.yaml), where Hextra lists the section on its own.
+*/ -}}
+{{- $page := .Page -}}
+{{- $destination := .Destination -}}
+{{- $url := urls.Parse $destination -}}
+{{- if and (eq $url.Scheme "") (strings.HasSuffix $url.Path ".md") (in $url.Path "plm/") -}}
+  {{- /*
+    A link to a Doorstop item, as an ADR cites a requirement. In the repository it points at the
+    item file itself; on the site the items live in the published document pages, so point at the
+    heading of that item — `plm/req/REQ-012.md` becomes `…/requirements/req/#req-012`.
+  */ -}}
+  {{- $uid := strings.TrimSuffix ".md" (path.Base $url.Path) -}}
+  {{- $document := path.Base (path.Dir $url.Path) | upper -}}
+  {{- with site.GetPage (printf "/development/requirements/%s" $document) -}}
+    {{- $destination = printf "%s#%s" .RelPermalink (lower $uid) -}}
+  {{- end -}}
+{{- else if and (eq $url.Scheme "") (strings.HasSuffix $url.Path ".md") -}}
+  {{- $target := "" -}}
+  {{- /* GetPage wants a content path without the extension. */ -}}
+  {{- $reference := strings.TrimSuffix ".md" $url.Path -}}
+  {{- if in (slice "index" "_index") (path.Base $reference) -}}
+    {{- $reference = path.Dir $reference -}}
+  {{- end -}}
+  {{- with $page.GetPage $reference -}}
+    {{- $target = .RelPermalink -}}
+  {{- end -}}
+  {{- with $target -}}
+    {{- $destination = . -}}
+    {{- with $url.Fragment -}}
+      {{- $destination = printf "%s#%s" $destination . -}}
+    {{- end -}}
+  {{- end -}}
+{{- else if and (eq $url.Scheme "") (strings.HasPrefix $destination "/") -}}
+  {{- /*
+    A root-relative link, such as the Doorstop site under `/requirements/`, has to carry the
+    site's own path: on GitHub Pages the site lives under `/cargo-semantic-release/`. Hugo does
+    this for links it renders itself, so a hook that replaces the default rendering has to do it
+    too.
+  */ -}}
+  {{- /* `relURL` treats a leading slash as the host root and skips the site's own path, so trim it. */ -}}
+  {{- $destination = strings.TrimPrefix "/" $destination | relURL -}}
+{{- end -}}
+<a href="{{ $destination }}"{{ with .Title }} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>
