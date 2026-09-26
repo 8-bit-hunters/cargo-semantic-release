@@ -38,5 +38,9 @@ docs/content/development/requirements/TST.md
 # Local output of `doorstop publish`
 /public/
 
+# Python bytecode from the project CLI
+__pycache__/
+*.pyc
+
 # Notes during development
 .notes/
